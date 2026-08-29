@@ -161,6 +161,22 @@ function registerSocket(socket: Socket) {
     ack?.({ ok: true, state: room.state, session })
   })
 
+  socket.on('host:join-active', (payloadOrAck?: unknown, possibleAck?: (result: Ack) => void) => {
+    const ack = callbackFrom(payloadOrAck, possibleAck)
+    const room = activeRoom()
+    if (!room) return fail(socket, ack, '연결할 Rally 파티가 아직 없어요.')
+
+    const session: Session = {
+      roomCode: room.state.roomCode,
+      userId: room.hostId,
+      phone: '',
+      nickname: room.state.hostName,
+      isHost: true,
+    }
+    attachSession(socket, session)
+    ack?.({ ok: true, state: room.state, session })
+  })
+
   socket.on('party:join', (payload: JoinPayload, ack?: (result: Ack) => void) => {
     const room = rooms.get(String(payload?.roomCode ?? '').trim().toUpperCase())
     if (!room) return fail(socket, ack, '파티룸을 찾을 수 없어요.')

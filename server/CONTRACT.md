@@ -8,6 +8,7 @@ Socket.IO는 현재 페이지와 같은 origin에서 연결한다. 모든 상태
 | --- | --- | --- |
 | `host:create` | `{ hostName, settings? }` | 활성 파티가 없을 때만 방을 만들고 callback으로 `{ ok, state, session }` 반환 |
 | `host:resume` | `{ roomCode, userId }` | 호스트 화면 새로고침 뒤, 이전 callback `session`으로 복구 |
+| `host:join-active` | 없음 | 현재 활성 파티에 호스트 미러 화면으로 연결. 같은 상태와 설정 제어 권한을 받음 |
 | `party:join` | `{ roomCode, phone, nickname }` | 전화번호가 같은 손님이면 기존 크레딧과 포지션을 복구 |
 | `party:join-default` | `{ phone, nickname }` | 현재 열려 있는 단일 파티에 방 코드 없이 입장 |
 | `party:resume` | `{ roomCode, phone }` | 화면 새로고침 뒤 기존 손님 세션 복구 |
@@ -38,7 +39,7 @@ Socket.IO는 현재 페이지와 같은 origin에서 연결한다. 모든 상태
 | `host:event-reward` | `{ eventId, userId }` | 선택 손님에게 한 번만 미션 보상 지급 |
 | `host:order-served` | `{ orderId }` | 주문 서빙 완료 처리 |
 
-호스트 이벤트는 방을 만든 socket 세션만 실행할 수 있다.
+호스트 이벤트는 방을 만든 socket 세션 또는 `host:join-active`로 연결한 호스트 미러 세션만 실행할 수 있다.
 
 ## Server event
 
