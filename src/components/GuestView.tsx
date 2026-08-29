@@ -658,9 +658,9 @@ export function GuestView({
   const validAmount = Number.isFinite(amountNumber) && amountNumber > 0 && amountNumber <= currentUser.credit
   const hasPosition = Boolean(currentUser.position)
   const pnlRate = currentUser.position
-    ? ((party.market.price - currentUser.position.entryPrice) / currentUser.position.entryPrice) * 100
+    ? ((party.market.price - currentUser.position.entryPrice) / currentUser.position.entryPrice) * party.settings.leverage * 100
     : 0
-  const projectedCredit = currentUser.position ? currentUser.position.amount * (1 + pnlRate / 100) : 0
+  const projectedCredit = currentUser.position ? Math.max(0, currentUser.position.amount * (1 + pnlRate / 100)) : 0
   const remainingSeconds = party.settings.roundSeconds - Math.floor((now - party.roundStartedAt) / 1000)
   const roundStatus = party.settings.autoRoundEnabled ? formatTime(remainingSeconds) : '수동 진행'
   const rankRows = [...party.users].sort((first, second) => totalAssets(second) - totalAssets(first))
@@ -783,7 +783,7 @@ export function GuestView({
                   <div>
                     <span className="guest-detail__icon"><CalendarDays size={15} /></span>
                     <span>예상 정산</span>
-                    <strong className={pnlRate >= 0 ? 'is-profit' : 'is-loss'}>{hasPosition ? `${formatCredit(projectedCredit)} C · ${pnlRate >= 0 ? '+' : ''}${pnlRate.toFixed(1)}%` : '—'}</strong>
+                    <strong className={pnlRate >= 0 ? 'is-profit' : 'is-loss'}>{hasPosition ? `${formatCredit(projectedCredit)} C · ${pnlRate >= 0 ? '+' : ''}${pnlRate.toFixed(1)}% (${party.settings.leverage}×)` : '—'}</strong>
                   </div>
                 </div>
               </section>

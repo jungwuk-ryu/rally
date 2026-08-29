@@ -83,9 +83,11 @@ function formatTimer(totalSeconds: number) {
   return `${String(Math.floor(safeSeconds / 60)).padStart(2, '0')}:${String(safeSeconds % 60).padStart(2, '0')}`
 }
 
-function getUserReturn(user: PartyUser, price: number) {
+const SPECTRUM_BARS = [0.45, 0.72, 0.92, 0.58, 0.82, 1, 0.68, 0.9, 0.55, 0.78, 0.96, 0.62, 0.85, 0.5]
+
+function getUserReturn(user: PartyUser, price: number, leverage: number) {
   if (!user.position || user.position.entryPrice <= 0) return 0
-  return ((price - user.position.entryPrice) / user.position.entryPrice) * 100
+  return ((price - user.position.entryPrice) / user.position.entryPrice) * leverage * 100
 }
 
 function getLeaderboardValue(user: PartyUser) {
@@ -401,6 +403,16 @@ export function HostView({
     >
       <div className="rally-host__grain" aria-hidden="true" />
       <div className="rally-host__audio-wash" aria-hidden="true" />
+      {audioMode !== 'idle' ? (
+        <div className="rally-host__spectrum" aria-hidden="true">
+          {SPECTRUM_BARS.map((height, index) => (
+            <i
+              key={index}
+              style={{ '--spectrum-height': `${height * 100}%`, '--spectrum-delay': `${index * -0.075}s` } as CSSProperties}
+            />
+          ))}
+        </div>
+      ) : null}
       <motion.div
         className="rally-host__aurora rally-host__aurora--violet"
         aria-hidden="true"
@@ -480,6 +492,7 @@ export function HostView({
             <span className={`rally-host__source${party.market.source === 'fallback' ? ' rally-host__source--fallback' : ''}`}>
               {party.market.source === 'fallback' ? 'DEMO' : 'UPBIT'}
             </span>
+            <span className="rally-host__leverage">{party.settings.leverage}×</span>
           </div>
           <div className={`rally-host__price-row${impact?.kind === 'surge' || impact?.kind === 'drop' ? ' is-impact' : ''}`}>
             <span className="rally-host__currency">₩</span>
@@ -556,7 +569,7 @@ export function HostView({
         </div>
         <ol className="rally-host__rank-list">
           {leaderboard.map((user, index) => {
-            const returnRate = getUserReturn(user, party.market.price)
+            const returnRate = getUserReturn(user, party.market.price, party.settings.leverage)
             const rankValue = getLeaderboardValue(user)
             return (
               <li className="rally-host__rank" key={user.id}>

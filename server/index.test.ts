@@ -2,7 +2,14 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { Market } from '../src/types.js'
-import { fetchUpbitTickerPrice, marketFromActualPrice, parseUpbitTicker, pollMarketPrice } from './index.js'
+import {
+  calculateLeveragedReturnRate,
+  fetchUpbitTickerPrice,
+  marketFromActualPrice,
+  parseUpbitTicker,
+  pollMarketPrice,
+  settleLeveragedPosition,
+} from './index.js'
 
 test('ticker failures preserve the last actual price and chart history', async () => {
   const market: Market = {
@@ -39,4 +46,11 @@ test('a cached or primed actual price seeds the market without a hardcoded DEMO 
   assert.equal(market.price, 107_740_000)
   assert.equal(market.source, 'upbit')
   assert.deepEqual(market.history, Array.from({ length: 40 }, () => 107_740_000))
+})
+
+test('five-times leverage applies to both profit and loss settlement', () => {
+  assert.equal(calculateLeveragedReturnRate(100, 110, 5), 0.5)
+  assert.equal(settleLeveragedPosition(100, 100, 110, 5), 150)
+  assert.equal(settleLeveragedPosition(100, 100, 90, 5), 50)
+  assert.equal(settleLeveragedPosition(100, 100, 80, 5), 0)
 })

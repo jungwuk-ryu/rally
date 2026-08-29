@@ -53,6 +53,8 @@ Socket.IO는 현재 페이지와 같은 origin에서 연결한다. 모든 상태
 
 `PartySettings.autoRoundEnabled`의 기본값은 `false`다. 켜면 기본 600초를 기준으로 포지션을 정산하고 직전 종목을 제외한 다음 종목으로 자동 전환한다. 꺼진 상태에서는 호스트의 `host:round-next`만 라운드를 넘긴다.
 
+가상 포지션의 가격 변동·부분 매도·라운드 정산에는 고정 `5×` 레버리지를 적용한다. 손실 정산은 0 크레딧 아래로 내려가지 않는다.
+
 ## HTTP
 
 `GET /api/health`는 `{ ok, service, rooms, uptimeSeconds }`를 반환한다. 운영 모드에서는 Vite `dist`를 같은 8829 포트에서 제공한다.

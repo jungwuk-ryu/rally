@@ -58,6 +58,7 @@ export interface PartySettings {
   autoRoundEnabled: boolean
   rallyThreshold: number
   rallyCooldownSeconds: number
+  leverage: number
 }
 
 export interface PartyState {

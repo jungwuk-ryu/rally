@@ -38,6 +38,7 @@ const INITIAL_HISTORY_POINTS = 40
 const HOST_PASSWORD = process.env.HOST_PASSWORD?.trim() || '123456'
 const DEFAULT_ROOM_CODE = 'RALLY'
 const DEFAULT_HOST_NAME = 'Rally Host'
+const DEFAULT_LEVERAGE = 5
 
 const MARKET_POOL = [
   { symbol: 'KRW-BTC', name: '비트코인', fallbackPrice: 156_200_000 },
@@ -557,7 +558,12 @@ function closePosition(
   const amount = closeAll ? position.amount : wholeNumber(payload.amount, 1, position.amount)
   if (!amount) return fail(socket, ack, '정산할 크레딧을 확인해 주세요.')
 
-  const settlement = Math.max(0, Math.round(amount * (context.room.state.market.price / position.entryPrice)))
+  const settlement = settleLeveragedPosition(
+    amount,
+    position.entryPrice,
+    context.room.state.market.price,
+    context.room.state.settings.leverage,
+  )
   const profit = settlement - amount
   const isFullClose = amount === position.amount
   context.user.credit += settlement
@@ -593,7 +599,12 @@ async function finishRound(room: Room, forcedByHost: boolean) {
     .filter((user) => user.position)
     .map((user) => {
       const position = user.position as Position
-      const settlement = Math.max(0, Math.round(position.amount * (room.state.market.price / position.entryPrice)))
+      const settlement = settleLeveragedPosition(
+        position.amount,
+        position.entryPrice,
+        room.state.market.price,
+        room.state.settings.leverage,
+      )
       const profit = settlement - position.amount
       user.credit += settlement
       user.pnl = 0
@@ -792,8 +803,22 @@ function applyMarketPrice(market: Market, incomingPrice: number, source: Market[
 function refreshPnls(room: Room) {
   for (const user of room.state.users) {
     if (!user.position) continue
-    user.pnl = Math.round(user.position.amount * ((room.state.market.price / user.position.entryPrice) - 1))
+    user.pnl = Math.round(user.position.amount * calculateLeveragedReturnRate(
+      user.position.entryPrice,
+      room.state.market.price,
+      room.state.settings.leverage,
+    ))
   }
+}
+
+export function calculateLeveragedReturnRate(entryPrice: number, currentPrice: number, leverage: number) {
+  if (!Number.isFinite(entryPrice) || entryPrice <= 0 || !Number.isFinite(currentPrice) || !Number.isFinite(leverage)) return 0
+  return ((currentPrice - entryPrice) / entryPrice) * Math.max(1, leverage)
+}
+
+export function settleLeveragedPosition(amount: number, entryPrice: number, currentPrice: number, leverage: number) {
+  if (!Number.isFinite(amount) || amount <= 0) return 0
+  return Math.max(0, Math.round(amount * (1 + calculateLeveragedReturnRate(entryPrice, currentPrice, leverage))))
 }
 
 function announceMc(room: Room, trigger: McTrigger) {
@@ -896,11 +921,12 @@ function mergeSettings(current: PartySettings, patch?: Partial<PartySettings>): 
     autoRoundEnabled: typeof patch?.autoRoundEnabled === 'boolean' ? patch.autoRoundEnabled : current.autoRoundEnabled,
     rallyThreshold: wholeNumber(patch?.rallyThreshold, 10, 50_000) ?? current.rallyThreshold,
     rallyCooldownSeconds: wholeNumber(patch?.rallyCooldownSeconds, 8, 1_800) ?? current.rallyCooldownSeconds,
+    leverage: current.leverage,
   }
 }
 
 function defaultSettings(): PartySettings {
-  return { roundSeconds: 600, autoRoundEnabled: false, rallyThreshold: 300, rallyCooldownSeconds: 75 }
+  return { roundSeconds: 600, autoRoundEnabled: false, rallyThreshold: 300, rallyCooldownSeconds: 75, leverage: DEFAULT_LEVERAGE }
 }
 
 function newRoomCode() {
