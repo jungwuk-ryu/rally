@@ -103,8 +103,8 @@ export default function App() {
   }, [])
 
   if (view === 'host' && party) return <HostView party={party} session={session ?? undefined} now={Date.now()} onTriggerRally={() => action('host:rally')} onNextRound={() => action('host:round-next')} onUpdateSettings={(settings: Partial<PartySettings>) => action('host:settings', settings)} onCreateEvent={(title, reward) => action('host:event-create', { title, reward })} onRewardEvent={(eventId, userId) => action('host:event-reward', { eventId, userId })} onServeOrder={(orderId) => action('host:order-served', { orderId })} />
-  if (view === 'guest' && party && session) return <GuestView party={party} session={session} onOpenPosition={(amount) => action('position:open', { userId: session.userId, amount })} onTopUp={(amount) => action('credit:topup', { userId: session.userId, amount })} onOrder={(productId, recipientId) => action('order:create', { userId: session.userId, productId, recipientId })} />
-  if (view === 'host') return <div className="app-loading">파티 화면을 준비하고 있어요.</div>
+  if (view === 'guest' && party && session) return <GuestView party={party} session={session} onInvest={(amount) => action('position:open', { userId: session.userId, amount })} onTopUp={(amount) => action('credit:topup', { userId: session.userId, amount })} onOrder={(productId, recipientId) => action('order:create', { userId: session.userId, productId, recipientId })} />
+  if (view === 'host') return <Lobby onHost={createParty} onJoin={() => setView('join')} />
   if (view === 'join') return <><JoinCard initialRoomCode={initialRoomCode} onJoin={joinParty} />{message && <div className="join-card__error" role="alert">{message}</div>}</>
   return <Lobby onHost={createParty} onJoin={() => setView('join')} />
 }

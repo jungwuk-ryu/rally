@@ -1,0 +1,18 @@
+[Unit]
+Description=Rally party service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/works/rally
+Environment=NODE_ENV=production
+Environment=PORT=8829
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGINT
+
+[Install]
+WantedBy=multi-user.target
