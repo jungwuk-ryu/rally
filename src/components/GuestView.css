@@ -1442,8 +1442,20 @@
 }
 
 .guest-topup-sheet {
-  max-height: none;
+  max-height: min(86dvh, 650px);
   text-align: center;
+}
+
+.guest-topup-flow {
+  min-height: 358px;
+}
+
+.guest-topup-flow--status {
+  display: flex;
+  min-height: 330px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 .guest-topup-sheet__icon {
@@ -1456,6 +1468,11 @@
   border-radius: 20px;
   background: linear-gradient(135deg, #846eff, #358dff);
   box-shadow: 0 10px 18px rgb(89 87 240 / 0.25);
+}
+
+.guest-topup-sheet__icon.is-confirm {
+  background: linear-gradient(135deg, #38466e, #6978aa);
+  box-shadow: 0 10px 18px rgb(59 72 116 / 0.2);
 }
 
 .guest-topup-sheet h2 {
@@ -1480,20 +1497,290 @@
 }
 
 .guest-topup-values button {
-  min-height: 47px;
+  display: flex;
+  min-height: 58px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
   color: #656a80;
   border: 1px solid #ededf4;
   border-radius: 13px;
   background: #fff;
   cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.guest-topup-values button:hover {
+  transform: translateY(-1px);
+}
+
+.guest-topup-values button strong {
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 820;
+  letter-spacing: -0.035em;
+}
+
+.guest-topup-values button small {
+  color: #9296a6;
+  font-size: 10px;
+  font-weight: 680;
 }
 
 .guest-topup-values button.is-selected {
   color: #6652ed;
   border-color: #735eff;
   background: #f8f7ff;
+}
+
+.guest-topup-values button.is-selected small {
+  color: #806ff0;
+}
+
+.guest-topup-payment-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 20px;
+  color: #35394f;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  text-align: left;
+}
+
+.guest-topup-payment-heading small {
+  color: #928da9;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.guest-topup-cards {
+  display: grid;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.guest-topup-card {
+  display: grid;
+  width: 100%;
+  min-height: 57px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  color: #2a2e44;
+  border: 1px solid #ebeaf1;
+  border-radius: 15px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.guest-topup-card:hover {
+  border-color: #cfc8fc;
+}
+
+.guest-topup-card.is-selected {
+  border-color: #7a66f6;
+  background: #faf9ff;
+  box-shadow: 0 5px 12px rgb(111 91 237 / 0.09);
+}
+
+.guest-topup-card__mark {
+  display: grid;
+  width: 35px;
+  height: 35px;
+  place-items: center;
+  color: #fff;
+  border-radius: 11px;
+}
+
+.guest-topup-card__mark.is-violet {
+  background: linear-gradient(135deg, #8771ff, #6250ee);
+}
+
+.guest-topup-card__mark.is-blue {
+  background: linear-gradient(135deg, #529eff, #4675df);
+}
+
+.guest-topup-card > span:nth-child(2) {
+  min-width: 0;
+}
+
+.guest-topup-card strong,
+.guest-topup-card small {
+  display: block;
+}
+
+.guest-topup-card strong {
+  color: #262a3f;
+  font-size: 13px;
+  font-weight: 790;
+  letter-spacing: -0.025em;
+}
+
+.guest-topup-card small {
+  margin-top: 2px;
+  color: #8c91a1;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.guest-topup-card__check {
+  display: grid;
+  width: 19px;
+  height: 19px;
+  place-items: center;
+  color: #fff;
+  border: 1px solid #d9d9e3;
+  border-radius: 50%;
+}
+
+.guest-topup-card.is-selected .guest-topup-card__check {
+  border-color: #735ff4;
+  background: #735ff4;
+}
+
+.guest-topup-sheet__notice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin: 11px 0 0 !important;
+  color: #9498a8 !important;
+  font-size: 11px !important;
+  font-weight: 640;
+}
+
+.guest-topup-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 29px;
+  margin: -4px auto 4px 0;
+  padding: 4px 7px;
+  color: #70758b;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.guest-topup-receipt {
+  display: grid;
+  gap: 2px;
+  margin: 22px 0 0;
+  padding: 12px 14px;
+  border: 1px solid #eae9f2;
+  border-radius: 17px;
+  background: #fafaff;
+  text-align: left;
+}
+
+.guest-topup-receipt > div {
+  display: flex;
+  min-height: 31px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.guest-topup-receipt > div + div {
+  border-top: 1px solid #ecebf3;
+}
+
+.guest-topup-receipt dt {
+  color: #878b9b;
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.guest-topup-receipt dd {
+  margin: 0;
+  color: #22263d;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  text-align: right;
+}
+
+.guest-topup-receipt > div:last-child dd {
+  color: #6652ed;
+  font-size: 15px;
+}
+
+.guest-topup-error {
+  margin: 11px 1px -7px !important;
+  color: #bc465f !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+}
+
+.guest-topup-authorizing,
+.guest-topup-success {
+  display: grid;
+  width: 70px;
+  height: 70px;
+  margin: 0 auto 18px;
+  place-items: center;
+  color: #fff;
+  border-radius: 24px;
+}
+
+.guest-topup-authorizing {
+  position: relative;
+  background: linear-gradient(135deg, #8771ff, #4a91f9);
+  box-shadow: 0 13px 27px rgb(90 94 230 / 0.27);
+}
+
+.guest-topup-authorizing svg {
+  animation: guest-topup-spin 0.92s linear infinite;
+}
+
+.guest-topup-authorizing__ring {
+  position: absolute;
+  inset: -8px;
+  border: 1px solid rgb(117 94 247 / 0.25);
+  border-radius: 30px;
+  animation: guest-topup-pulse 1.15s ease-out infinite;
+}
+
+.guest-topup-status-amount {
+  display: block;
+  margin-top: 16px;
+  color: #6351dc;
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+  letter-spacing: -0.05em;
+}
+
+.guest-topup-success {
+  background: linear-gradient(135deg, #54d69a, #2bbd86);
+  box-shadow: 0 13px 27px rgb(43 189 134 / 0.24);
+}
+
+.guest-topup-success__amount {
+  display: block;
+  margin-top: 13px;
+  color: #28aa75;
+  font-size: 30px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 860;
+  letter-spacing: -0.065em;
+}
+
+@keyframes guest-topup-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes guest-topup-pulse {
+  from { transform: scale(0.76); opacity: 0.84; }
+  to { transform: scale(1.3); opacity: 0; }
 }
 
 .rally-guest--empty {

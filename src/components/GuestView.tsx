@@ -4,9 +4,13 @@ import {
   ArrowUpRight,
   CalendarDays,
   Check,
+  ChevronLeft,
   ChevronDown,
   CircleDollarSign,
+  CreditCard,
   Gift,
+  LockKeyhole,
+  LoaderCircle,
   Minus,
   PackageCheck,
   Plus,
@@ -60,6 +64,11 @@ const TOKEN_ICONS: Record<string, string> = {
 }
 
 const TOP_UP_VALUES = [100, 200, 500]
+const CREDIT_VALUE_WON = 10
+const TOP_UP_CARDS = [
+  { id: 'rally-card', title: 'Rally 카드', detail: '•••• 2407', tone: 'violet' },
+  { id: 'party-card', title: '파티 카드', detail: '•••• 8841', tone: 'blue' },
+] as const
 const INVEST_VALUES = [10, 30, 50, 100]
 const PRODUCT_MEDIA: Record<string, string> = {
   highball: '/products/highball.png',
@@ -77,6 +86,7 @@ type ProductCategory = typeof PRODUCT_CATEGORIES[number]['id']
 
 const formatCredit = (credit: number) => new Intl.NumberFormat('ko-KR').format(Math.max(0, Math.round(credit)))
 const formatPrice = (price: number) => `₩ ${new Intl.NumberFormat('ko-KR').format(Math.round(price))}`
+const formatWon = (value: number) => `₩${new Intl.NumberFormat('ko-KR').format(value)}`
 const totalAssets = (user: PartyUser) => user.credit + (user.position ? user.position.amount + user.pnl : 0)
 
 function getTokenIcon(symbol: string) {
@@ -241,8 +251,56 @@ function ProductPicker({
   )
 }
 
-function TopUpSheet({ onClose, onTopUp }: { onClose: () => void; onTopUp: (amount: number) => Promise<void> }) {
+type TopUpStep = 'select' | 'confirm' | 'authorizing' | 'success'
+
+function TopUpSheet({ onClose, onTopUp }: { onClose: () => void; onTopUp: (amount: number) => Promise<boolean> }) {
   const [amount, setAmount] = useState(200)
+  const [cardId, setCardId] = useState<(typeof TOP_UP_CARDS)[number]['id']>(TOP_UP_CARDS[0].id)
+  const [step, setStep] = useState<TopUpStep>('select')
+  const [failure, setFailure] = useState<string | null>(null)
+  const mountedRef = useRef(true)
+  const selectedCard = TOP_UP_CARDS.find((card) => card.id === cardId) ?? TOP_UP_CARDS[0]
+  const paymentAmount = amount * CREDIT_VALUE_WON
+  const isAuthorizing = step === 'authorizing'
+
+  useEffect(() => () => {
+    mountedRef.current = false
+  }, [])
+
+  const closeSheet = () => {
+    if (!isAuthorizing) onClose()
+  }
+
+  const chooseAmount = (nextAmount: number) => {
+    if (isAuthorizing) return
+    setAmount(nextAmount)
+    setFailure(null)
+  }
+
+  const continueToConfirm = () => {
+    setFailure(null)
+    setStep('confirm')
+  }
+
+  const approve = async () => {
+    if (isAuthorizing) return
+
+    setFailure(null)
+    setStep('authorizing')
+    const [completed] = await Promise.all([
+      Promise.resolve(onTopUp(amount)).catch(() => false),
+      new Promise<void>((resolve) => window.setTimeout(resolve, 940)),
+    ])
+
+    if (!mountedRef.current) return
+    if (completed) {
+      setStep('success')
+      return
+    }
+
+    setStep('confirm')
+    setFailure('승인이 되지 않았어요. 잠시 후 다시 시도해요.')
+  }
 
   return (
     <motion.div
@@ -251,10 +309,10 @@ function TopUpSheet({ onClose, onTopUp }: { onClose: () => void; onTopUp: (amoun
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      onMouseDown={onClose}
+      onMouseDown={closeSheet}
     >
       <motion.section
-        className="guest-sheet guest-topup-sheet"
+        className={`guest-sheet guest-topup-sheet is-${step}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="topup-sheet-title"
@@ -265,29 +323,148 @@ function TopUpSheet({ onClose, onTopUp }: { onClose: () => void; onTopUp: (amoun
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="guest-sheet__handle" />
-        <button className="guest-icon-button guest-sheet__close" type="button" onClick={onClose} aria-label="닫기">
-          <X size={18} />
-        </button>
-        <div className="guest-topup-sheet__icon" aria-hidden="true">
-          <CircleDollarSign size={27} />
-        </div>
-        <h2 id="topup-sheet-title">크레딧 추가</h2>
-        <p>파티 크레딧을 더해요.</p>
-        <div className="guest-topup-values">
-          {TOP_UP_VALUES.map((value) => (
-            <button
-              className={amount === value ? 'is-selected' : ''}
-              key={value}
-              type="button"
-              onClick={() => setAmount(value)}
+        {!isAuthorizing ? (
+          <button className="guest-icon-button guest-sheet__close" type="button" onClick={closeSheet} aria-label="닫기">
+            <X size={18} />
+          </button>
+        ) : null}
+
+        <AnimatePresence mode="wait" initial={false}>
+          {step === 'select' ? (
+            <motion.div
+              className="guest-topup-flow"
+              key="select"
+              initial={{ opacity: 0, x: -12 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -12 }}
             >
-              +{formatCredit(value)}
-            </button>
-          ))}
-        </div>
-        <button className="guest-primary-button guest-sheet__submit" type="button" onClick={() => void onTopUp(amount)}>
-          {formatCredit(amount)} 크레딧 추가
-        </button>
+              <div className="guest-topup-sheet__icon" aria-hidden="true">
+                <CircleDollarSign size={27} />
+              </div>
+              <h2 id="topup-sheet-title">크레딧 충전</h2>
+              <p>원하는 금액과 결제 수단을 골라요.</p>
+
+              <div className="guest-topup-values" aria-label="충전 금액">
+                {TOP_UP_VALUES.map((value) => (
+                  <button
+                    className={amount === value ? 'is-selected' : ''}
+                    key={value}
+                    type="button"
+                    onClick={() => chooseAmount(value)}
+                  >
+                    <strong>+{formatCredit(value)} C</strong>
+                    <small>{formatWon(value * CREDIT_VALUE_WON)}</small>
+                  </button>
+                ))}
+              </div>
+
+              <div className="guest-topup-payment-heading">
+                <span>결제 수단</span>
+                <small>가상 결제</small>
+              </div>
+              <div className="guest-topup-cards" role="radiogroup" aria-label="결제 수단">
+                {TOP_UP_CARDS.map((card) => {
+                  const selected = card.id === cardId
+                  return (
+                    <button
+                      aria-checked={selected}
+                      className={`guest-topup-card ${selected ? 'is-selected' : ''}`}
+                      key={card.id}
+                      role="radio"
+                      type="button"
+                      onClick={() => {
+                        setCardId(card.id)
+                        setFailure(null)
+                      }}
+                    >
+                      <span className={`guest-topup-card__mark is-${card.tone}`}><CreditCard size={18} /></span>
+                      <span><strong>{card.title}</strong><small>{card.detail}</small></span>
+                      <span className="guest-topup-card__check" aria-hidden="true">{selected ? <Check size={14} /> : null}</span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <button className="guest-primary-button guest-sheet__submit" type="button" onClick={continueToConfirm}>
+                결제 확인
+              </button>
+              <p className="guest-topup-sheet__notice"><LockKeyhole size={13} aria-hidden="true" /> 실제로 청구되지 않는 시연용 결제예요.</p>
+            </motion.div>
+          ) : null}
+
+          {step === 'confirm' ? (
+            <motion.div
+              className="guest-topup-flow"
+              key="confirm"
+              initial={{ opacity: 0, x: 12 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -12 }}
+            >
+              <button className="guest-topup-back" type="button" onClick={() => setStep('select')}>
+                <ChevronLeft size={18} aria-hidden="true" /> 수정
+              </button>
+              <div className="guest-topup-sheet__icon is-confirm" aria-hidden="true">
+                <CreditCard size={27} />
+              </div>
+              <h2 id="topup-sheet-title">결제 확인</h2>
+              <p>아래 내용을 확인해요.</p>
+
+              <dl className="guest-topup-receipt">
+                <div><dt>충전 크레딧</dt><dd>+{formatCredit(amount)} C</dd></div>
+                <div><dt>결제 수단</dt><dd>{selectedCard.title} {selectedCard.detail}</dd></div>
+                <div><dt>결제 금액</dt><dd>{formatWon(paymentAmount)}</dd></div>
+              </dl>
+              {failure ? <p className="guest-topup-error" role="alert">{failure}</p> : null}
+              <button className="guest-primary-button guest-sheet__submit" type="button" onClick={() => void approve()}>
+                {formatWon(paymentAmount)} 결제 승인
+              </button>
+              <p className="guest-topup-sheet__notice"><LockKeyhole size={13} aria-hidden="true" /> 실제로 청구되지 않는 시연용 결제예요.</p>
+            </motion.div>
+          ) : null}
+
+          {step === 'authorizing' ? (
+            <motion.div
+              className="guest-topup-flow guest-topup-flow--status"
+              key="authorizing"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.02 }}
+            >
+              <div className="guest-topup-authorizing" aria-hidden="true">
+                <span className="guest-topup-authorizing__ring" />
+                <LoaderCircle size={31} />
+              </div>
+              <h2 id="topup-sheet-title">결제 승인 중</h2>
+              <p>{selectedCard.title}로 안전하게 확인하고 있어요.</p>
+              <span className="guest-topup-status-amount">{formatWon(paymentAmount)}</span>
+            </motion.div>
+          ) : null}
+
+          {step === 'success' ? (
+            <motion.div
+              className="guest-topup-flow guest-topup-flow--status"
+              key="success"
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.02 }}
+            >
+              <motion.div
+                className="guest-topup-success"
+                initial={{ scale: 0.55 }}
+                animate={{ scale: [0.55, 1.08, 1] }}
+                transition={{ duration: 0.42, ease: 'easeOut' }}
+                aria-hidden="true"
+              >
+                <Check size={32} />
+              </motion.div>
+              <h2 id="topup-sheet-title">충전 완료</h2>
+              <strong className="guest-topup-success__amount">+{formatCredit(amount)} C</strong>
+              <p>파티 크레딧에 바로 반영됐어요.</p>
+              <button className="guest-primary-button guest-sheet__submit" type="button" onClick={onClose}>완료</button>
+              <p className="guest-topup-sheet__notice"><LockKeyhole size={13} aria-hidden="true" /> 시연용 결제예요. 실제로 청구되지 않았어요.</p>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
       </motion.section>
     </motion.div>
   )
@@ -520,9 +697,9 @@ export function GuestView({
   }
   const finishTopUp = async (value: number) => {
     const completed = await Promise.resolve(onTopUp(value))
-    if (!completed) return
-    setTopUpOpen(false)
+    if (!completed) return false
     setToast({ id: `topup-${Date.now()}`, icon: 'default', title: `${formatCredit(value)} 크레딧을 더했어요` })
+    return true
   }
   const finishOrder = async (productId: string, recipientId: string) => {
     const product = party.products.find((item) => item.id === productId)
