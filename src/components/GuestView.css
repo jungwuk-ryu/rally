@@ -240,6 +240,7 @@
   font-weight: 800;
   letter-spacing: -0.062em;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .guest-market__change {
