@@ -39,3 +39,36 @@
 - [P3] When a real venue menu is available, replace the current generated product photos and names with venue-specific assets.
 
 final result: passed
+
+---
+
+## 2026-08-29 — DESIGN-rally.md visual-system refresh
+
+**Reference interpretation**
+
+- Visual source: `/home/ubuntu/.codex/attachments/9b85f396-cf3a-4f52-a556-a8523da50a56/DESIGN-rally.md`
+- The source defines a visual system, not Rally product behavior. Rally's shared party, live market, host password, QR entry, credit purchase, order, and realtime controls remain intact.
+
+**Rendered review**
+
+- Host, 1440 × 900: `/tmp/rally-design-host-1440.png`
+- Entry desktop: `/tmp/rally-entry-desktop.png`
+- Guest investment, 390 × 844: `/tmp/rally-design-guest-invest-390.png`
+- Guest products, 390 × 844: `/tmp/rally-design-guest-products-390.png`
+- Guest credit checkout, 390 × 844: `/tmp/rally-design-guest-checkout-390.png`
+
+| Surface | Applied visual system | Verified behavior |
+| --- | --- | --- |
+| Entry and host access | Warm cream canvas, ink display type, one orange action, mono metadata, pill inputs and CTA | Desktop and 390px mobile have no horizontal overflow; host password flow remains available. |
+| Host display | Editorial Rally wordmark on cream, dark market and chart wells, restrained orange status/action, rounded live-rank panel | Live chart, QR, settings modal, event/order areas, audio pulse, and impact effects remain in the rendered host view. |
+| Guest party | Cream canvas, dark live market well, white 10–16px information cards, orange only on the primary action | 390px viewport renders at 1× with `scrollWidth` 390; price chart, tabs, and credit control remain present. |
+| Products and checkout | Product imagery inside white bordered cards; full-width dark or orange actions; staged credit checkout sheet | Four product images, category rail, order history, two payment choices, and the confirm action render without horizontal overflow at 390px. |
+
+**Visual checks**
+
+- Cream canvas resolves to `rgb(249, 247, 243)` and the live market well resolves to `rgb(32, 32, 32)` in the deployed guest screen.
+- The checkout primary action resolves to `rgb(234, 40, 4)`; it is the primary orange action in that view.
+- No browser console errors were recorded for the deployed guest join, product, or checkout flow.
+- The host layout has no horizontal overflow at 1440px, and its settings dialog opens without covering the chart controls.
+
+final result: passed
