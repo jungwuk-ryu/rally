@@ -48,9 +48,9 @@ test('a cached or primed actual price seeds the market without a hardcoded DEMO 
   assert.deepEqual(market.history, Array.from({ length: 40 }, () => 107_740_000))
 })
 
-test('five-times leverage applies to both profit and loss settlement', () => {
-  assert.equal(calculateLeveragedReturnRate(100, 110, 5), 0.5)
-  assert.equal(settleLeveragedPosition(100, 100, 110, 5), 150)
-  assert.equal(settleLeveragedPosition(100, 100, 90, 5), 50)
-  assert.equal(settleLeveragedPosition(100, 100, 80, 5), 0)
+test('ten-times leverage applies to both profit and loss settlement', () => {
+  assert.equal(calculateLeveragedReturnRate(100, 110, 10), 1)
+  assert.equal(settleLeveragedPosition(100, 100, 110, 10), 200)
+  assert.equal(settleLeveragedPosition(100, 100, 90, 10), 0)
+  assert.equal(settleLeveragedPosition(100, 100, 80, 10), 0)
 })

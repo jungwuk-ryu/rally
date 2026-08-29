@@ -37,7 +37,7 @@ const UPBIT_TICKER_WEBSOCKET_ENDPOINT = 'wss://api.upbit.com/websocket/v1'
 const INITIAL_HISTORY_POINTS = 40
 const DEFAULT_ROOM_CODE = 'RALLY'
 const DEFAULT_HOST_NAME = 'Rally Host'
-const DEFAULT_LEVERAGE = 5
+const DEFAULT_LEVERAGE = 10
 
 const MARKET_POOL = [
   { symbol: 'KRW-BTC', name: '비트코인', fallbackPrice: 156_200_000 },
