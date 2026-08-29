@@ -7,8 +7,11 @@ import {
   ChevronDown,
   CircleDollarSign,
   Gift,
+  Minus,
   PackageCheck,
-  Send,
+  Plus,
+  ReceiptText,
+  ShoppingBag,
   Sparkles,
   Tag,
   Trophy,
@@ -18,16 +21,26 @@ import type { PartyNotice, PartyState, PartyUser, Session } from '../types'
 import './GuestView.css'
 
 export type GuestTab = 'invest' | 'products' | 'ranking'
+type PositionAction = 'add' | 'close'
+type GuestAction = (amount: number) => Promise<boolean> | boolean
 
 export interface GuestViewProps {
   party: PartyState
   session: Session
+  /** 단일 파티 흐름에서는 방 코드 대신 짧은 상태 라벨만 보여 줍니다. */
+  partyLabel?: string
+  /** 방 코드가 필요한 초대 흐름에서만 켭니다. 기본값은 false입니다. */
+  showRoomCode?: boolean
   /** 현재 라운드 포지션을 엽니다. */
-  onInvest?: (amount: number) => void
+  onInvest?: GuestAction
   /** @deprecated onInvest를 사용합니다. 통합 중인 호출부 호환용입니다. */
-  onOpenPosition?: (amount: number) => void
-  onTopUp: (amount: number) => void
-  onOrder: (productId: string, recipientId: string) => void
+  onOpenPosition?: GuestAction
+  /** 보유 포지션에 현재 가격으로 크레딧을 더합니다. */
+  onAddPosition?: GuestAction
+  /** 포지션에서 요청 크레딧만큼 정리합니다. */
+  onClosePosition?: GuestAction
+  onTopUp: GuestAction
+  onOrder: (productId: string, recipientId: string) => Promise<boolean> | boolean
   onTabChange?: (tab: GuestTab) => void
 }
 
@@ -48,12 +61,34 @@ const TOKEN_ICONS: Record<string, string> = {
 
 const TOP_UP_VALUES = [100, 200, 500]
 const INVEST_VALUES = [10, 30, 50, 100]
+const PRODUCT_MEDIA: Record<string, string> = {
+  highball: '/products/highball.png',
+  beer: '/products/beer.png',
+  shot: '/products/shot.png',
+  snack: '/products/snack.png',
+}
+const PRODUCT_CATEGORIES = [
+  { id: 'all', label: '전체' },
+  { id: 'drink', label: '주류' },
+  { id: 'food', label: '안주' },
+] as const
+
+type ProductCategory = typeof PRODUCT_CATEGORIES[number]['id']
 
 const formatCredit = (credit: number) => new Intl.NumberFormat('ko-KR').format(Math.max(0, Math.round(credit)))
 const formatPrice = (price: number) => `₩ ${new Intl.NumberFormat('ko-KR').format(Math.round(price))}`
+const totalAssets = (user: PartyUser) => user.credit + (user.position ? user.position.amount + user.pnl : 0)
 
 function getTokenIcon(symbol: string) {
   return TOKEN_ICONS[symbol.replace('KRW-', '')] ?? '◈'
+}
+
+function productImage(productId: string) {
+  return PRODUCT_MEDIA[productId] ?? '/products/highball.png'
+}
+
+function productCategory(productId: string): Exclude<ProductCategory, 'all'> {
+  return productId === 'snack' ? 'food' : 'drink'
 }
 
 function formatTime(totalSeconds: number) {
@@ -124,11 +159,19 @@ function ProductPicker({
   guests: PartyUser[]
   currentUser: PartyUser
   onClose: () => void
-  onOrder: (recipientId: string) => void
+  onOrder: (recipientId: string) => Promise<boolean>
 }) {
   const [recipientId, setRecipientId] = useState(currentUser.id)
+  const [submitting, setSubmitting] = useState(false)
   const recipient = guests.find((guest) => guest.id === recipientId) ?? currentUser
   const canOrder = currentUser.credit >= product.price
+
+  const submitOrder = async () => {
+    if (!canOrder || submitting) return
+    setSubmitting(true)
+    await onOrder(recipient.id)
+    setSubmitting(false)
+  }
 
   return (
     <motion.div
@@ -155,17 +198,15 @@ function ProductPicker({
           <X size={18} />
         </button>
         <div className="guest-sheet__product">
-          <span className="guest-product__emoji" style={{ background: product.accent }} aria-hidden="true">
-            {product.emoji}
-          </span>
+          <img className="guest-sheet__product-image" src={productImage(product.id)} alt="" />
           <div>
             <p>{product.name}</p>
             <strong>{formatCredit(product.price)} 크레딧</strong>
           </div>
         </div>
         <div className="guest-sheet__section-title">
-          <span>누구에게 보낼까요?</span>
-          <small>내게도 보낼 수 있어요</small>
+          <span>누구에게 드릴까요?</span>
+          <small>나에게 주문하거나 파티 친구에게 선물할 수 있어요</small>
         </div>
         <div className="guest-recipient-list">
           {guests.map((guest) => {
@@ -188,18 +229,19 @@ function ProductPicker({
         <button
           className="guest-primary-button guest-sheet__submit"
           type="button"
-          disabled={!canOrder}
-          onClick={() => onOrder(recipient.id)}
+          disabled={!canOrder || submitting}
+          onClick={() => void submitOrder()}
         >
-          <Send size={18} aria-hidden="true" />
-          {canOrder ? `${recipient.id === currentUser.id ? '나에게' : `${recipient.nickname}님에게`} 보내기` : '크레딧이 부족해요'}
+          <ShoppingBag size={18} aria-hidden="true" />
+          {submitting ? '결제 중이에요' : canOrder ? `결제하기 · ${formatCredit(product.price)} C` : '크레딧이 부족해요'}
         </button>
+        {!canOrder ? <p className="guest-sheet__credit-warning" role="alert">{formatCredit(product.price)} C가 필요해요. 지금은 {formatCredit(currentUser.credit)} C를 쓸 수 있어요.</p> : null}
       </motion.section>
     </motion.div>
   )
 }
 
-function TopUpSheet({ onClose, onTopUp }: { onClose: () => void; onTopUp: (amount: number) => void }) {
+function TopUpSheet({ onClose, onTopUp }: { onClose: () => void; onTopUp: (amount: number) => Promise<void> }) {
   const [amount, setAmount] = useState(200)
 
   return (
@@ -243,7 +285,7 @@ function TopUpSheet({ onClose, onTopUp }: { onClose: () => void; onTopUp: (amoun
             </button>
           ))}
         </div>
-        <button className="guest-primary-button guest-sheet__submit" type="button" onClick={() => onTopUp(amount)}>
+        <button className="guest-primary-button guest-sheet__submit" type="button" onClick={() => void onTopUp(amount)}>
           {formatCredit(amount)} 크레딧 추가
         </button>
       </motion.section>
@@ -251,11 +293,138 @@ function TopUpSheet({ onClose, onTopUp }: { onClose: () => void; onTopUp: (amoun
   )
 }
 
-export function GuestView({ party, session, onInvest, onOpenPosition, onTopUp, onOrder, onTabChange }: GuestViewProps) {
+function PositionActionSheet({
+  action,
+  availableCredit,
+  positionAmount,
+  onClose,
+  onSubmit,
+}: {
+  action: PositionAction
+  availableCredit: number
+  positionAmount: number
+  onClose: () => void
+  onSubmit: (amount: number) => Promise<boolean>
+}) {
+  const maxAmount = Math.max(0, Math.floor(action === 'add' ? availableCredit : positionAmount))
+  const [amount, setAmount] = useState(() => String(Math.min(action === 'add' ? 50 : maxAmount, maxAmount)))
+  const [submitting, setSubmitting] = useState(false)
+  const amountNumber = Math.floor(Number(amount))
+  const validAmount = Number.isFinite(amountNumber) && amountNumber > 0 && amountNumber <= maxAmount
+  const closePresets = [25, 50, 75].map((ratio) => ({
+    label: `${ratio}%`,
+    value: Math.max(1, Math.floor(maxAmount * (ratio / 100))),
+  }))
+  const presets = action === 'add'
+    ? INVEST_VALUES.filter((value) => value <= maxAmount).map((value) => ({ label: `+${value}`, value }))
+    : closePresets
+
+  const submit = async (nextAmount = amountNumber) => {
+    if (submitting || !Number.isFinite(nextAmount) || nextAmount < 1 || nextAmount > maxAmount) return
+    setSubmitting(true)
+    const completed = await onSubmit(nextAmount)
+    setSubmitting(false)
+    if (completed) onClose()
+  }
+
+  const title = action === 'add' ? '추가 투자' : '포지션 정리'
+  const description = action === 'add'
+    ? `보유 크레딧 ${formatCredit(availableCredit)} C`
+    : `현재 투자 ${formatCredit(positionAmount)} C`
+
+  return (
+    <motion.div
+      className="guest-sheet__backdrop"
+      role="presentation"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onMouseDown={onClose}
+    >
+      <motion.section
+        className="guest-sheet guest-position-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="position-sheet-title"
+        initial={{ y: 56, opacity: 0.7 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 56, opacity: 0.7 }}
+        transition={{ type: 'spring', stiffness: 330, damping: 29 }}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="guest-sheet__handle" />
+        <button className="guest-icon-button guest-sheet__close" type="button" onClick={onClose} aria-label="닫기">
+          <X size={18} />
+        </button>
+        <div className={`guest-position-sheet__icon is-${action}`} aria-hidden="true">
+          {action === 'add' ? <Plus size={26} /> : <Minus size={26} />}
+        </div>
+        <h2 id="position-sheet-title">{title}</h2>
+        <p>{description}</p>
+        <label className="guest-position-sheet__input">
+          <span>{action === 'add' ? '더할 크레딧' : '정리할 크레딧'}</span>
+          <div>
+            <input
+              inputMode="numeric"
+              type="number"
+              min="1"
+              max={maxAmount}
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+            />
+            <strong>C</strong>
+          </div>
+        </label>
+        <div className="guest-position-sheet__presets">
+          {presets.map((preset) => (
+            <button key={preset.label} type="button" onClick={() => setAmount(String(preset.value))}>
+              {preset.label}
+            </button>
+          ))}
+          <button type="button" onClick={() => setAmount(String(maxAmount))}>전부</button>
+        </div>
+        {action === 'close' ? (
+          <button
+            className="guest-position-sheet__all"
+            type="button"
+            disabled={!maxAmount || submitting}
+            onClick={() => void submit(maxAmount)}
+          >
+            전량 매도
+          </button>
+        ) : null}
+        <button
+          className="guest-primary-button guest-sheet__submit"
+          type="button"
+          disabled={!validAmount || submitting}
+          onClick={() => void submit()}
+        >
+          {submitting ? '처리 중이에요' : action === 'add' ? '추가 투자하기' : '일부 매도하기'}
+        </button>
+      </motion.section>
+    </motion.div>
+  )
+}
+
+export function GuestView({
+  party,
+  session,
+  partyLabel = '파티 진행 중',
+  showRoomCode = false,
+  onInvest,
+  onOpenPosition,
+  onAddPosition,
+  onClosePosition,
+  onTopUp,
+  onOrder,
+  onTabChange,
+}: GuestViewProps) {
   const [tab, setTab] = useState<GuestTab>('invest')
   const [amount, setAmount] = useState('50')
   const [topUpOpen, setTopUpOpen] = useState(false)
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
+  const [selectedProductCategory, setSelectedProductCategory] = useState<ProductCategory>('all')
+  const [positionAction, setPositionAction] = useState<PositionAction | null>(null)
   const [toast, setToast] = useState<GuestToast | null>(null)
   const [now, setNow] = useState(Date.now())
   const lastRound = useRef(party.round)
@@ -316,51 +485,75 @@ export function GuestView({ party, session, onInvest, onOpenPosition, onTopUp, o
     : 0
   const projectedCredit = currentUser.position ? currentUser.position.amount * (1 + pnlRate / 100) : 0
   const remainingSeconds = party.settings.roundSeconds - Math.floor((now - party.roundStartedAt) / 1000)
-  const rankRows = [...party.users].sort((first, second) => second.credit + second.pnl - (first.credit + first.pnl))
+  const roundStatus = party.settings.autoRoundEnabled ? formatTime(remainingSeconds) : '수동 진행'
+  const rankRows = [...party.users].sort((first, second) => totalAssets(second) - totalAssets(first))
   const currentRank = rankRows.findIndex((user) => user.id === currentUser.id) + 1
   const activeEvents = party.events.filter((event) => event.active && !event.completedUserIds.includes(currentUser.id))
   const rallyIsLive = Boolean(party.rallyActiveUntil && party.rallyActiveUntil > now)
 
   const changeText = `${party.market.changeRate >= 0 ? '+' : ''}${party.market.changeRate.toFixed(2)}%`
   const openPosition = onInvest ?? onOpenPosition
+  const addPosition = onAddPosition ?? openPosition
   const selectTab = (nextTab: GuestTab) => {
     setTab(nextTab)
     onTabChange?.(nextTab)
   }
-  const submitInvest = () => {
+  const submitInvest = async () => {
     if (!validAmount) {
       setToast({ id: 'credit-warning', icon: 'default', title: '투자할 크레딧을 확인해요' })
       return
     }
-    openPosition?.(amountNumber)
+    const completed = await Promise.resolve(openPosition?.(amountNumber) ?? false)
+    if (!completed) return
     setToast({ id: `invest-${Date.now()}`, icon: 'default', title: `${formatCredit(amountNumber)} 크레딧을 담았어요` })
   }
-  const finishTopUp = (value: number) => {
-    onTopUp(value)
+  const finishPositionAction = async (action: PositionAction, nextAmount: number) => {
+    const callback = action === 'add' ? addPosition : onClosePosition
+    const completed = await Promise.resolve(callback?.(nextAmount) ?? false)
+    if (!completed) return false
+    setToast({
+      id: `${action}-${Date.now()}`,
+      icon: 'default',
+      title: action === 'add' ? `${formatCredit(nextAmount)} 크레딧을 더했어요` : `${formatCredit(nextAmount)} 크레딧을 정리했어요`,
+    })
+    return true
+  }
+  const finishTopUp = async (value: number) => {
+    const completed = await Promise.resolve(onTopUp(value))
+    if (!completed) return
     setTopUpOpen(false)
     setToast({ id: `topup-${Date.now()}`, icon: 'default', title: `${formatCredit(value)} 크레딧을 더했어요` })
   }
-  const finishOrder = (productId: string, recipientId: string) => {
+  const finishOrder = async (productId: string, recipientId: string) => {
     const product = party.products.find((item) => item.id === productId)
     const recipient = party.users.find((user) => user.id === recipientId)
-    onOrder(productId, recipientId)
+    const completed = await Promise.resolve(onOrder(productId, recipientId))
+    if (!completed) return false
     setSelectedProductId(null)
     setToast({
       id: `order-${Date.now()}`,
       icon: 'gift',
       title: recipientId === currentUser.id ? `${product?.name ?? '상품'}을 주문했어요` : `${recipient?.nickname ?? '친구'}님에게 보냈어요`,
+      body: `${formatCredit(product?.price ?? 0)} C를 사용했어요. 주문이 접수됐어요.`,
     })
+    return true
   }
+  const visibleProducts = party.products.filter((product) => selectedProductCategory === 'all' || productCategory(product.id) === selectedProductCategory)
+  const personalOrders = party.orders.filter((order) => order.buyerId === currentUser.id || order.recipientId === currentUser.id).slice(0, 3)
 
   return (
     <main className="rally-guest">
       <section className="rally-guest__shell" aria-label="Rally 파티">
-        <header className="rally-guest__header">
+        <header className={`rally-guest__header ${showRoomCode ? '' : 'is-single-party'}`}>
           <span className="rally-guest__wordmark">Rally</span>
-          <div className="rally-guest__room" title={`방 코드 ${party.roomCode}`}>
-            <span>{party.roomCode}</span>
-            <ChevronDown size={18} aria-hidden="true" />
-          </div>
+          {showRoomCode ? (
+            <div className="rally-guest__room" title={`방 코드 ${party.roomCode}`}>
+              <span>{party.roomCode}</span>
+              <ChevronDown size={18} aria-hidden="true" />
+            </div>
+          ) : (
+            <span className="rally-guest__party-label"><i aria-hidden="true" />{partyLabel}</span>
+          )}
           <button className="guest-credit" type="button" onClick={() => setTopUpOpen(true)} aria-label="크레딧 추가">
             <span className="guest-credit__coin">C</span>
             <strong>{formatCredit(currentUser.credit)}</strong>
@@ -368,31 +561,33 @@ export function GuestView({ party, session, onInvest, onOpenPosition, onTopUp, o
           </button>
         </header>
 
-        <motion.section
-          className={`guest-market ${party.market.changeRate < 0 ? 'is-down' : ''}`}
-          aria-label={`현재 종목 ${party.market.name}`}
-          animate={{ scale: [1, 1.006, 1] }}
-          transition={{ duration: 0.72, ease: 'easeOut' }}
-          key={`${party.market.symbol}-${party.market.price}`}
-        >
-          <div className="guest-market__texture" aria-hidden="true" />
-          <div className="guest-market__topline">
-            <span className="guest-market__token">{getTokenIcon(party.market.symbol)}</span>
-            <div>
-              <span className="guest-market__name">{party.market.name}</span>
-              <span className="guest-market__symbol">{party.market.symbol}</span>
+        {tab !== 'products' ? (
+          <motion.section
+            className={`guest-market ${party.market.changeRate < 0 ? 'is-down' : ''}`}
+            aria-label={`현재 종목 ${party.market.name}`}
+            animate={{ scale: [1, 1.006, 1] }}
+            transition={{ duration: 0.72, ease: 'easeOut' }}
+            key={`${party.market.symbol}-${party.market.price}`}
+          >
+            <div className="guest-market__texture" aria-hidden="true" />
+            <div className="guest-market__topline">
+              <span className="guest-market__token">{getTokenIcon(party.market.symbol)}</span>
+              <div>
+                <span className="guest-market__name">{party.market.name}</span>
+                <span className="guest-market__symbol">{party.market.symbol}</span>
+              </div>
+              <span className={`guest-market__timer ${party.settings.autoRoundEnabled ? '' : 'is-manual'}`}>{roundStatus}</span>
             </div>
-            <span className="guest-market__timer">{formatTime(remainingSeconds)}</span>
-          </div>
-          <div className="guest-market__price-row">
-            <strong>{formatPrice(party.market.price)}</strong>
-            <span className={`guest-market__change ${party.market.changeRate < 0 ? 'is-down' : ''}`}>
-              <ArrowUpRight size={16} aria-hidden="true" />
-              {changeText}
-            </span>
-          </div>
-          <MarketChart history={party.market.history} />
-        </motion.section>
+            <div className="guest-market__price-row">
+              <strong>{formatPrice(party.market.price)}</strong>
+              <span className={`guest-market__change ${party.market.changeRate < 0 ? 'is-down' : ''}`}>
+                <ArrowUpRight size={16} aria-hidden="true" />
+                {changeText}
+              </span>
+            </div>
+            <MarketChart history={party.market.history} />
+          </motion.section>
+        ) : null}
 
         <AnimatePresence mode="wait">
           {tab === 'invest' ? (
@@ -416,11 +611,24 @@ export function GuestView({ party, session, onInvest, onOpenPosition, onTopUp, o
                 </div>
               </section>
 
+              {hasPosition ? (
+                <section className="guest-position-actions" aria-label="포지션 조작">
+                  <button type="button" onClick={() => setPositionAction('add')}>
+                    <span className="guest-position-actions__icon is-add"><Plus size={17} /></span>
+                    <span><strong>추가 투자</strong><small>보유 {formatCredit(currentUser.credit)} C</small></span>
+                  </button>
+                  <button type="button" onClick={() => setPositionAction('close')}>
+                    <span className="guest-position-actions__icon is-close"><Minus size={17} /></span>
+                    <span><strong>매도</strong><small>일부 또는 전량</small></span>
+                  </button>
+                </section>
+              ) : null}
+
               {!hasPosition ? (
                 <section className="guest-invest-panel" aria-labelledby="guest-invest-heading">
                   <div>
                     <h1 id="guest-invest-heading">같이 뛰어들어요</h1>
-                    <p>이번 라운드는 {formatTime(remainingSeconds)} 남았어요</p>
+                    <p>{party.settings.autoRoundEnabled ? `이번 라운드는 ${formatTime(remainingSeconds)} 남았어요` : '호스트가 다음 라운드를 시작해요'}</p>
                   </div>
                   <div className="guest-invest-panel__controls">
                     <label>
@@ -443,7 +651,7 @@ export function GuestView({ party, session, onInvest, onOpenPosition, onTopUp, o
                       ))}
                       <button type="button" onClick={() => setAmount(String(Math.floor(currentUser.credit)))}>전부</button>
                     </div>
-                    <button className="guest-primary-button" type="button" onClick={submitInvest} disabled={!validAmount}>
+                    <button className="guest-primary-button" type="button" onClick={() => void submitInvest()} disabled={!validAmount}>
                       투자하기
                     </button>
                   </div>
@@ -474,35 +682,72 @@ export function GuestView({ party, session, onInvest, onOpenPosition, onTopUp, o
           ) : null}
 
           {tab === 'products' ? (
-            <motion.div key="products" className="guest-tab-content" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+            <motion.div key="products" className="guest-tab-content guest-tab-content--products" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
               <section className="guest-products" aria-labelledby="guest-products-heading">
                 <div className="guest-section-heading guest-section-heading--products">
                   <div>
-                    <h1 id="guest-products-heading">상품</h1>
-                    <p>크레딧으로 마음을 전해요</p>
+                    <span className="guest-products__eyebrow">RALLY BAR</span>
+                    <h1 id="guest-products-heading">상품 주문</h1>
+                    <p>크레딧으로 나에게, 친구에게</p>
                   </div>
-                  <Gift size={23} aria-hidden="true" />
+                  <span className="guest-products__balance"><span>C</span>{formatCredit(currentUser.credit)}</span>
                 </div>
-                <div className="guest-product-list">
-                  {party.products.map((product) => (
-                    <article className="guest-product" key={product.id}>
-                      <div className="guest-product__visual" style={{ background: product.accent }} aria-hidden="true">
-                        {product.emoji}
-                      </div>
-                      <div className="guest-product__info">
-                        <div>
-                          <h2>{product.name}</h2>
-                          <p>{product.description}</p>
-                        </div>
-                        <strong>{formatCredit(product.price)} C</strong>
-                      </div>
-                      <button className="guest-product__send" type="button" onClick={() => setSelectedProductId(product.id)}>
-                        <Send size={16} aria-hidden="true" />
-                        보내기
-                      </button>
-                    </article>
+                <div className="guest-product-categories" role="tablist" aria-label="상품 종류">
+                  {PRODUCT_CATEGORIES.map((category) => (
+                    <button
+                      className={selectedProductCategory === category.id ? 'is-active' : ''}
+                      key={category.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={selectedProductCategory === category.id}
+                      onClick={() => setSelectedProductCategory(category.id)}
+                    >
+                      {category.label}
+                    </button>
                   ))}
                 </div>
+                <div className="guest-product-list">
+                  {visibleProducts.map((product) => (
+                    <button className="guest-product" key={product.id} type="button" onClick={() => setSelectedProductId(product.id)}>
+                      <span className="guest-product__visual">
+                        <img src={productImage(product.id)} alt="" />
+                        {product.id === 'highball' ? <span className="guest-product__badge">추천</span> : null}
+                      </span>
+                      <span className="guest-product__info">
+                        <span className="guest-product__text">
+                          <strong>{product.name}</strong>
+                          <small>{product.description}</small>
+                        </span>
+                        <strong>{formatCredit(product.price)} C</strong>
+                      </span>
+                      <span className="guest-product__choose"><ShoppingBag size={15} aria-hidden="true" /> 고르기</span>
+                    </button>
+                  ))}
+                </div>
+                {personalOrders.length > 0 ? (
+                  <section className="guest-order-history" aria-labelledby="guest-order-history-heading">
+                    <div className="guest-order-history__heading">
+                      <h2 id="guest-order-history-heading">내 주문</h2>
+                      <ReceiptText size={18} aria-hidden="true" />
+                    </div>
+                    <ul>
+                      {personalOrders.map((order) => {
+                        const orderedProduct = party.products.find((product) => product.id === order.productId)
+                        const recipient = party.users.find((user) => user.id === order.recipientId)
+                        return (
+                          <li key={order.id}>
+                            <img src={productImage(order.productId)} alt="" />
+                            <div>
+                              <strong>{orderedProduct?.name ?? '상품'}</strong>
+                              <span>{order.buyerId === currentUser.id && order.recipientId !== currentUser.id ? `${recipient?.nickname ?? '친구'}님에게 선물` : '나에게 주문'}</span>
+                            </div>
+                            <em className={order.served ? 'is-served' : ''}>{order.served ? '서빙 완료' : '주문 접수'}</em>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </section>
+                ) : null}
               </section>
             </motion.div>
           ) : null}
@@ -513,7 +758,7 @@ export function GuestView({ party, session, onInvest, onOpenPosition, onTopUp, o
                 <div className="guest-ranking__hero">
                   <span>내 순위</span>
                   <strong>{currentRank}<small>위</small></strong>
-                  <p>{formatCredit(currentUser.credit + currentUser.pnl)} 크레딧</p>
+                  <p>{formatCredit(totalAssets(currentUser))} 크레딧</p>
                   <Trophy size={28} aria-hidden="true" />
                 </div>
                 <h1 id="guest-ranking-heading">지금 순위</h1>
@@ -525,7 +770,7 @@ export function GuestView({ party, session, onInvest, onOpenPosition, onTopUp, o
                         <span className={`guest-ranking__number rank-${index + 1}`}>{index + 1}</span>
                         <span className="guest-ranking__avatar">{user.nickname.slice(0, 1)}</span>
                         <strong>{isCurrentUser ? '나' : user.nickname}</strong>
-                        <span>{formatCredit(user.credit + user.pnl)} C</span>
+                        <span>{formatCredit(totalAssets(user))} C</span>
                       </li>
                     )
                   })}
@@ -586,6 +831,17 @@ export function GuestView({ party, session, onInvest, onOpenPosition, onTopUp, o
             currentUser={currentUser}
             onClose={() => setSelectedProductId(null)}
             onOrder={(recipientId) => finishOrder(selectedProduct.id, recipientId)}
+          />
+        ) : null}
+      </AnimatePresence>
+      <AnimatePresence>
+        {positionAction && currentUser.position ? (
+          <PositionActionSheet
+            action={positionAction}
+            availableCredit={currentUser.credit}
+            positionAmount={currentUser.position.amount}
+            onClose={() => setPositionAction(null)}
+            onSubmit={(nextAmount) => finishPositionAction(positionAction, nextAmount)}
           />
         ) : null}
       </AnimatePresence>
