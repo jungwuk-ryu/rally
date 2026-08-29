@@ -98,11 +98,23 @@ export default function App() {
 
   useEffect(() => {
     const stored = readStoredSession()
-    if (!stored || (view !== 'host' && view !== 'guest')) return
-    emitWithAck<BootstrapResponse>('party:join', stored).then(applyBootstrap).catch(() => setView(stored.isHost ? 'host' : 'join'))
-  // Only restore once from the route selected when the application loads.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    if (party || view === 'lobby' || view === 'join') return
+
+    if (view === 'host') {
+      const reconnect = stored?.isHost
+        ? emitWithAck<BootstrapResponse>('host:resume', { roomCode: stored.roomCode, userId: stored.userId })
+        : emitWithAck<BootstrapResponse>('host:join-active')
+
+      reconnect.then(applyBootstrap).catch(() => setView('lobby'))
+      return
+    }
+
+    if (stored && view === 'guest') {
+      emitWithAck<BootstrapResponse>('party:resume', { roomCode: stored.roomCode, phone: stored.phone })
+        .then(applyBootstrap)
+        .catch(() => setView('join'))
+    }
+  }, [applyBootstrap, party, view])
 
   const action = useCallback(async (event: string, payload: object = {}) => {
     try {
