@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircle, ArrowRight, Users, X } from 'lucide-react'
 import { HostView } from './components/HostView'
 import { GuestView } from './components/GuestView'
@@ -82,6 +82,24 @@ export default function App() {
   const [view, setView] = useState<'lobby' | 'join' | 'host' | 'guest'>(path === '/host' ? 'host' : isJoinRoute ? 'join' : 'lobby')
   const [hostIntent, setHostIntent] = useState<'create' | 'mirror'>(path === '/host' ? 'mirror' : 'create')
   const [message, setMessage] = useState('')
+  const hasConnectedRef = useRef(false)
+
+  const applyBootstrap = useCallback((bootstrap: BootstrapResponse) => {
+    setParty(bootstrap.state)
+    setSession(bootstrap.session)
+    localStorage.setItem(SESSION_KEY, JSON.stringify(bootstrap.session))
+    setView(bootstrap.session.isHost ? 'host' : 'guest')
+  }, [])
+
+  const restoreStoredSession = useCallback(async () => {
+    const stored = readStoredSession()
+    if (!stored) return null
+    const bootstrap = stored.isHost
+      ? await emitWithAck<BootstrapResponse>('host:join-active', {})
+      : await emitWithAck<BootstrapResponse>('party:join-default', { phone: stored.phone, nickname: stored.nickname })
+    applyBootstrap(bootstrap)
+    return bootstrap
+  }, [applyBootstrap])
 
   useEffect(() => {
     socket.connect()
@@ -90,15 +108,18 @@ export default function App() {
     socket.on('party:notice', (notice: PartyNotice) => {
       setParty(current => current ? { ...current, notice } : current)
     })
-    return () => { socket.off('party:state'); socket.off('party:error'); socket.off('party:notice'); socket.disconnect() }
-  }, [])
-
-  const applyBootstrap = useCallback((bootstrap: BootstrapResponse) => {
-    setParty(bootstrap.state)
-    setSession(bootstrap.session)
-    localStorage.setItem(SESSION_KEY, JSON.stringify(bootstrap.session))
-    setView(bootstrap.session.isHost ? 'host' : 'guest')
-  }, [])
+    const restoreAfterReconnect = () => {
+      if (!hasConnectedRef.current) {
+        hasConnectedRef.current = true
+        return
+      }
+      void restoreStoredSession().then(() => setMessage('')).catch(() => undefined)
+    }
+    socket.on('connect', restoreAfterReconnect)
+    return () => {
+      socket.off('party:state'); socket.off('party:error'); socket.off('party:notice'); socket.off('connect', restoreAfterReconnect); socket.disconnect()
+    }
+  }, [restoreStoredSession])
 
   const enterHost = useCallback(async () => {
     try {
@@ -110,10 +131,7 @@ export default function App() {
           bootstrap = await emitWithAck<BootstrapResponse>('host:join-active', {})
         }
       } else {
-        const stored = readStoredSession()
-        bootstrap = stored?.isHost
-          ? await emitWithAck<BootstrapResponse>('host:resume', { roomCode: stored.roomCode, userId: stored.userId })
-          : await emitWithAck<BootstrapResponse>('host:join-active', {})
+        bootstrap = await emitWithAck<BootstrapResponse>('host:join-active', {})
       }
       applyBootstrap(bootstrap)
       return null
@@ -141,14 +159,9 @@ export default function App() {
 
   useEffect(() => {
     const stored = readStoredSession()
-    if (party || view !== 'guest' || !stored) return
-
-    if (stored && view === 'guest') {
-      emitWithAck<BootstrapResponse>('party:resume', { roomCode: stored.roomCode, phone: stored.phone })
-        .then(applyBootstrap)
-        .catch(() => setView('join'))
-    }
-  }, [applyBootstrap, party, view])
+    if (party || view !== 'guest' || !stored || stored.isHost) return
+    void restoreStoredSession().catch(() => setView('join'))
+  }, [party, restoreStoredSession, view])
 
   const action = useCallback(async (event: string, payload: object = {}) => {
     try {
@@ -156,10 +169,26 @@ export default function App() {
       setMessage('')
       return true
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '요청을 처리하지 못했어요.')
+      const errorMessage = error instanceof Error ? error.message : '요청을 처리하지 못했어요.'
+      if (/세션을 (?:확인|찾지)/.test(errorMessage)) {
+        try {
+          const bootstrap = await restoreStoredSession()
+          if (bootstrap) {
+            const retryPayload = 'userId' in payload
+              ? { ...payload, userId: bootstrap.session.userId }
+              : payload
+            await emitWithAck(event, retryPayload)
+            setMessage('')
+            return true
+          }
+        } catch {
+          // 기존 오류를 그대로 안내합니다.
+        }
+      }
+      setMessage(errorMessage)
       return false
     }
-  }, [])
+  }, [restoreStoredSession])
 
   if (view === 'host' && party) return <><HostView party={party} session={session ?? undefined} now={Date.now()} onTriggerRally={() => action('host:rally')} onNextRound={() => action('host:round-next')} onUpdateSettings={(settings: Partial<PartySettings>) => action('host:settings', settings)} onCreateEvent={(title, reward) => action('host:event-create', { title, reward })} onRewardEvent={(eventId, userId) => action('host:event-reward', { eventId, userId })} onServeOrder={(orderId) => action('host:order-served', { orderId })} /><AppErrorNotice message={message} onDismiss={() => setMessage('')} /></>
   if (view === 'guest' && party && session) return <><GuestView party={party} session={session} onInvest={(amount) => action('position:open', { userId: session.userId, amount })} onAddPosition={(amount) => action('position:open', { userId: session.userId, amount })} onClosePosition={(amount) => action('position:close', { userId: session.userId, amount })} onTopUp={(amount) => action('credit:topup', { userId: session.userId, amount })} onOrder={(productId, recipientId) => action('order:create', { userId: session.userId, productId, recipientId })} /><AppErrorNotice message={message} onDismiss={() => setMessage('')} /></>
