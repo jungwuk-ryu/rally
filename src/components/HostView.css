@@ -1,0 +1,831 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Playfair+Display:ital,wght@0,700;1,700&display=swap');
+
+.rally-host {
+  --host-white: #fbf8ff;
+  --host-soft: rgba(250, 244, 255, 0.7);
+  --host-muted: rgba(247, 237, 255, 0.46);
+  --host-line: rgba(245, 227, 255, 0.14);
+  --host-panel: rgba(24, 14, 31, 0.2);
+  --host-violet: #ba8dff;
+  --host-pink: #ff9ac1;
+  --host-green: #62e4b3;
+  --host-red: #ff9aaa;
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(228px, 18.5vw, 304px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 100dvh;
+  overflow: hidden;
+  color: var(--host-white);
+  background:
+    radial-gradient(ellipse 69% 85% at 75% 7%, rgba(179, 122, 245, 0.71), transparent 62%),
+    radial-gradient(ellipse 72% 66% at 89% 90%, rgba(255, 122, 138, 0.61), transparent 68%),
+    radial-gradient(ellipse 61% 52% at 52% 69%, rgba(119, 49, 255, 0.54), transparent 74%),
+    linear-gradient(105deg, #070807 0%, #0a0b09 34%, #29172f 57%, #7f4d71 100%);
+  font-family: 'DM Sans', 'Pretendard Variable', Pretendard, 'Noto Sans KR', sans-serif;
+}
+
+.rally-host--down {
+  --host-violet: #e4a2ce;
+  --host-pink: #ff8da3;
+  background:
+    radial-gradient(ellipse 69% 85% at 75% 7%, rgba(214, 96, 180, 0.58), transparent 62%),
+    radial-gradient(ellipse 72% 66% at 89% 90%, rgba(255, 103, 120, 0.63), transparent 68%),
+    radial-gradient(ellipse 61% 52% at 52% 69%, rgba(149, 41, 114, 0.53), transparent 74%),
+    linear-gradient(105deg, #090708 0%, #10080e 34%, #3a172d 57%, #844e66 100%);
+}
+
+.rally-host__grain,
+.rally-host__aurora {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.rally-host__grain {
+  opacity: 0.15;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.86' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.3'/%3E%3C/svg%3E");
+  mix-blend-mode: soft-light;
+}
+
+.rally-host__aurora--violet {
+  top: -28%;
+  right: 4%;
+  bottom: auto;
+  left: auto;
+  width: min(62vw, 900px);
+  height: min(62vw, 900px);
+  border-radius: 50%;
+  filter: blur(94px);
+  opacity: 0.5;
+  background: radial-gradient(circle, rgba(211, 145, 255, 0.55), transparent 65%);
+}
+
+.rally-host__aurora--rose {
+  top: auto;
+  right: -14%;
+  bottom: -24%;
+  left: auto;
+  width: min(76vw, 1100px);
+  height: min(60vw, 840px);
+  border-radius: 50%;
+  filter: blur(92px);
+  opacity: 0.47;
+  background: radial-gradient(circle, rgba(255, 146, 142, 0.7), transparent 65%);
+}
+
+.rally-host__topbar {
+  z-index: 2;
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: clamp(19px, 3.8vw, 42px) clamp(18px, 3.6vw, 62px) 0;
+}
+
+.rally-host__round,
+.rally-host__settings-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 246, 255, 0.15);
+  border-radius: 999px;
+  color: rgba(255, 247, 255, 0.73);
+  background: rgba(33, 22, 36, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.rally-host__round {
+  padding: 7px 11px;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.rally-host__round-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--host-pink);
+  box-shadow: 0 0 9px var(--host-pink);
+}
+
+.rally-host__settings-trigger {
+  cursor: pointer;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 12px;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.rally-host__settings-trigger:hover,
+.rally-host__settings-trigger:focus-visible {
+  border-color: rgba(255, 246, 255, 0.35);
+  background: rgba(255, 243, 255, 0.13);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.rally-host__stage {
+  position: relative;
+  z-index: 1;
+  grid-column: 1;
+  grid-row: 2;
+  min-height: 0;
+  padding: clamp(14px, 2.2vw, 29px) clamp(28px, 7.6vw, 128px) clamp(148px, 18vh, 194px);
+}
+
+.rally-host__wordmark {
+  width: min-content;
+  margin: clamp(6px, 2.5vh, 35px) 0 0;
+  color: #f9efff;
+  font-family: 'Playfair Display', 'Snell Roundhand', 'Segoe Script', cursive;
+  font-size: clamp(7.8rem, 17.2vw, 18rem);
+  font-style: italic;
+  font-weight: 700;
+  line-height: 0.78;
+  letter-spacing: -0.115em;
+  text-shadow:
+    0 2px 1px #fff8ff,
+    0 -3px 7px rgba(241, 189, 255, 0.9),
+    -6px 8px 1px rgba(48, 16, 77, 0.9),
+    -10px 11px 13px rgba(0, 0, 0, 0.78),
+    2px 4px 0 rgba(79, 24, 83, 0.72),
+    7px 9px 3px rgba(249, 137, 39, 0.52),
+    9px 13px 24px rgba(189, 104, 255, 0.42);
+  -webkit-text-stroke: 1.5px rgba(26, 7, 35, 0.88);
+  transform-origin: 35% 50%;
+  user-select: none;
+}
+
+.rally-host__market {
+  position: relative;
+  z-index: 2;
+  margin-top: clamp(42px, 7.2vh, 74px);
+}
+
+.rally-host__market-head,
+.rally-host__price-row {
+  display: flex;
+  align-items: baseline;
+}
+
+.rally-host__market-head { gap: 10px; }
+
+.rally-host__market-name {
+  color: rgba(255, 250, 255, 0.84);
+  font-size: clamp(18px, 1.65vw, 25px);
+  font-weight: 500;
+  letter-spacing: -0.05em;
+}
+
+.rally-host__source {
+  padding: 3px 5px;
+  border-radius: 4px;
+  color: rgba(236, 223, 255, 0.55);
+  background: rgba(239, 221, 255, 0.1);
+  font-family: 'DM Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 0.09em;
+}
+
+.rally-host__source--fallback { color: rgba(255, 216, 189, 0.73); }
+
+.rally-host__price-row {
+  gap: 7px;
+  margin-top: 5px;
+}
+
+.rally-host__currency {
+  color: var(--host-green);
+  font-size: clamp(24px, 2.1vw, 34px);
+  font-weight: 600;
+}
+
+.rally-host__price {
+  color: var(--host-green);
+  font-size: clamp(38px, 4.3vw, 68px);
+  font-weight: 700;
+  letter-spacing: -0.065em;
+  line-height: 0.9;
+  text-shadow: 0 0 30px rgba(98, 228, 179, 0.12);
+}
+
+.rally-host--down .rally-host__currency,
+.rally-host--down .rally-host__price { color: var(--host-red); }
+
+.rally-host__change {
+  margin-left: 4px;
+  font-family: 'DM Mono', monospace;
+  font-size: clamp(11px, 1.1vw, 15px);
+  font-weight: 500;
+}
+
+.rally-host__change--up,
+.is-up { color: var(--host-green); }
+.rally-host__change--down,
+.is-down { color: var(--host-red); }
+
+.rally-host__chart {
+  position: absolute;
+  right: 0;
+  bottom: 30px;
+  left: 0;
+  height: clamp(120px, 20vh, 228px);
+  opacity: 0.9;
+  mask-image: linear-gradient(90deg, transparent 0%, black 11%, black 97%, transparent 100%);
+}
+
+.rally-host__chart-glint {
+  position: absolute;
+  right: 10.5%;
+  bottom: 27%;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #fff8ff;
+  box-shadow: 0 0 8px 3px #ffe2ff, 0 0 31px 9px rgba(222, 124, 255, 0.82);
+}
+
+.rally-host__leaderboard {
+  z-index: 2;
+  grid-column: 2;
+  grid-row: 2;
+  align-self: stretch;
+  min-width: 0;
+  margin: clamp(22px, 3.2vh, 40px) clamp(18px, 3vw, 52px) clamp(124px, 15vh, 170px) 0;
+  padding: 19px 16px 14px;
+  border: 1px solid rgba(255, 241, 255, 0.16);
+  border-radius: 17px;
+  background: linear-gradient(145deg, rgba(255, 229, 255, 0.09), rgba(44, 27, 48, 0.06));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 20px 55px rgba(16, 5, 20, 0.1);
+  backdrop-filter: blur(16px) saturate(115%);
+  -webkit-backdrop-filter: blur(16px) saturate(115%);
+}
+
+.rally-host__leaderboard-title,
+.rally-host__section-head {
+  display: flex;
+  align-items: center;
+}
+
+.rally-host__leaderboard-title {
+  gap: 7px;
+  color: rgba(255, 247, 255, 0.64);
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.09em;
+}
+
+.rally-host__participant-count {
+  display: inline-grid;
+  min-width: 18px;
+  height: 18px;
+  margin-left: auto;
+  border: 1px solid rgba(255, 239, 255, 0.16);
+  border-radius: 50%;
+  place-items: center;
+  font-size: 8px;
+}
+
+.rally-host__rank-list {
+  display: grid;
+  gap: clamp(9px, 1.15vh, 15px);
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rally-host__rank {
+  display: grid;
+  grid-template-columns: 16px 27px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.rally-host__rank-number {
+  display: grid;
+  min-width: 16px;
+  color: rgba(255, 246, 255, 0.38);
+  place-items: center;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+}
+
+.rally-host__rank-number--first { color: #ffdb8d; }
+
+.rally-host__avatar {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  border: 1px solid rgba(255, 255, 255, 0.19);
+  border-radius: 50%;
+  color: rgba(23, 10, 31, 0.75);
+  place-items: center;
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.35);
+  font-size: 11px;
+}
+
+.rally-host__rank-person,
+.rally-host__rank-value {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.rally-host__rank-person > span {
+  overflow: hidden;
+  color: rgba(255, 248, 255, 0.9);
+  font-size: clamp(11px, 0.9vw, 13px);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rally-host__rank small,
+.rally-host__rank-value small {
+  font-family: 'DM Mono', monospace;
+  font-size: 8px;
+  letter-spacing: -0.05em;
+}
+
+.rally-host__rank-person small { color: rgba(255, 244, 255, 0.43); }
+
+.rally-host__rank-value {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.rally-host__rank-value strong {
+  color: rgba(255, 248, 255, 0.77);
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.rally-host__join-card {
+  z-index: 3;
+  grid-column: 1;
+  grid-row: 3;
+  display: flex;
+  align-items: center;
+  width: max-content;
+  max-width: calc(100% - 36px);
+  margin: 0 0 clamp(22px, 4.3vh, 46px) clamp(18px, 3.5vw, 60px);
+  padding: 12px;
+  border: 1px solid rgba(255, 246, 255, 0.17);
+  border-radius: 15px;
+  background: rgba(10, 8, 12, 0.38);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 18px 38px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.rally-host__qr {
+  flex: 0 0 auto;
+  padding: 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.rally-host__join-copy {
+  display: grid;
+  gap: 1px;
+  min-width: 111px;
+  margin-left: 10px;
+}
+
+.rally-host__join-copy > span {
+  color: rgba(255, 248, 255, 0.73);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+}
+
+.rally-host__join-copy > strong {
+  color: rgba(255, 246, 255, 0.49);
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  font-weight: 400;
+}
+
+.rally-host__join-people { color: var(--host-green); font-size: 8px; }
+
+.rally-host__join-copy small {
+  margin-top: 4px;
+  color: rgba(255, 245, 255, 0.43);
+  font-size: 8px;
+}
+
+.rally-host__join-copy b {
+  color: rgba(255, 249, 255, 0.95);
+  font-family: 'DM Mono', monospace;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.rally-host__join-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 10px;
+  background: rgba(255, 242, 255, 0.12);
+}
+
+.rally-host__rally-trigger {
+  display: grid;
+  min-width: 118px;
+  padding: 6px 2px;
+  border: 0;
+  border-radius: 10px;
+  color: rgba(255, 247, 255, 0.36);
+  background: transparent;
+  cursor: not-allowed;
+  place-items: center;
+  font: inherit;
+  transition: color 180ms ease, background 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.rally-host__rally-trigger > span {
+  margin-top: 1px;
+  font-family: 'DM Mono', monospace;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+}
+
+.rally-host__rally-trigger small {
+  max-width: 112px;
+  margin-top: 2px;
+  color: inherit;
+  font-size: 8px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.rally-host__rally-trigger.is-ready {
+  color: #fff8ff;
+  cursor: pointer;
+  background: linear-gradient(135deg, rgba(205, 112, 255, 0.57), rgba(255, 139, 173, 0.46));
+  box-shadow: 0 0 20px rgba(236, 122, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.27);
+  animation: rally-ready-pulse 2.2s ease-in-out infinite;
+}
+
+.rally-host__rally-trigger.is-ready:hover,
+.rally-host__rally-trigger.is-ready:focus-visible {
+  outline: none;
+  transform: translateY(-2px) scale(1.015);
+  box-shadow: 0 0 32px rgba(243, 126, 255, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.34);
+}
+
+.rally-host__mc {
+  z-index: 2;
+  position: absolute;
+  right: clamp(24px, 7vw, 136px);
+  bottom: clamp(24px, 4.6vh, 47px);
+  left: clamp(280px, 31vw, 468px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  min-height: 32px;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.7);
+}
+
+.rally-host__mc-label {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 7px;
+  border-radius: 999px;
+  color: rgba(255, 240, 255, 0.75);
+  background: rgba(218, 150, 255, 0.16);
+  font-size: 10px;
+}
+
+.rally-host__mc p {
+  overflow: hidden;
+  margin: 0;
+  color: rgba(255, 246, 255, 0.88);
+  font-size: clamp(14px, 1.45vw, 22px);
+  font-weight: 500;
+  letter-spacing: -0.045em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rally-host__moment {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  overflow: hidden;
+  pointer-events: none;
+  place-items: center;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 248, 255, 0.66) 0%, rgba(239, 119, 255, 0.36) 17%, rgba(110, 47, 255, 0.18) 41%, transparent 69%),
+    linear-gradient(130deg, rgba(255, 97, 182, 0.24), transparent 40%, rgba(128, 93, 255, 0.26));
+  mix-blend-mode: screen;
+}
+
+.rally-host__moment-rings {
+  position: absolute;
+  width: min(48vw, 680px);
+  aspect-ratio: 1;
+  border: 2px solid rgba(255, 250, 255, 0.83);
+  border-radius: 50%;
+  box-shadow: 0 0 100px 30px rgba(250, 125, 255, 0.72), inset 0 0 100px 30px rgba(135, 98, 255, 0.42);
+}
+
+.rally-host__moment-copy {
+  display: grid;
+  gap: 4px;
+  color: #fffaff;
+  place-items: center;
+  text-align: center;
+  text-shadow: 0 2px 22px rgba(83, 13, 98, 0.8);
+}
+
+.rally-host__moment-copy strong {
+  font-family: 'DM Mono', monospace;
+  font-size: clamp(33px, 6vw, 84px);
+  letter-spacing: -0.075em;
+}
+
+.rally-host__moment-copy span { font-size: clamp(14px, 1.6vw, 22px); }
+
+.rally-host__dialog-backdrop {
+  position: fixed;
+  z-index: 25;
+  inset: 0;
+  display: grid;
+  padding: 20px;
+  overflow-y: auto;
+  background: rgba(5, 3, 7, 0.67);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  place-items: center;
+}
+
+.rally-host__dialog {
+  width: min(560px, 100%);
+  max-height: min(750px, calc(100dvh - 40px));
+  overflow: hidden;
+  border: 1px solid rgba(255, 238, 255, 0.2);
+  border-radius: 21px;
+  background: linear-gradient(145deg, rgba(55, 35, 65, 0.97), rgba(24, 16, 32, 0.98));
+  box-shadow: 0 25px 90px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.rally-host__dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 23px 24px 19px;
+  border-bottom: 1px solid rgba(255, 238, 255, 0.1);
+}
+
+.rally-host__dialog-head > div { display: grid; gap: 3px; }
+
+.rally-host__dialog-head span {
+  color: rgba(229, 191, 255, 0.67);
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+
+.rally-host__dialog-head h2 {
+  margin: 0;
+  color: var(--host-white);
+  font-size: 22px;
+  letter-spacing: -0.06em;
+}
+
+.rally-host__dialog-head button {
+  display: grid;
+  width: 33px;
+  height: 33px;
+  border: 1px solid rgba(255, 236, 255, 0.14);
+  border-radius: 50%;
+  color: rgba(255, 244, 255, 0.71);
+  background: rgba(255, 245, 255, 0.06);
+  cursor: pointer;
+  place-items: center;
+}
+
+.rally-host__dialog-scroll {
+  max-height: calc(min(750px, 100dvh - 40px) - 90px);
+  padding: 20px 24px 25px;
+  overflow-y: auto;
+}
+
+.rally-host__round-form,
+.rally-host__control-section { padding: 0 0 20px; }
+
+.rally-host__round-form label,
+.rally-host__section-head > span {
+  color: rgba(255, 246, 255, 0.75);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.rally-host__round-form > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 9px;
+}
+
+.rally-host__round-form input,
+.rally-host__event-form input,
+.rally-host__event-row select {
+  min-width: 0;
+  border: 1px solid rgba(255, 235, 255, 0.13);
+  border-radius: 9px;
+  color: var(--host-white);
+  background: rgba(255, 245, 255, 0.07);
+  font: inherit;
+  outline: none;
+}
+
+.rally-host__round-form input {
+  width: 75px;
+  padding: 9px 10px;
+}
+
+.rally-host__round-form > div > span {
+  color: rgba(255, 245, 255, 0.54);
+  font-size: 13px;
+}
+
+.rally-host__round-form button,
+.rally-host__event-row button,
+.rally-host__order-row button {
+  border: 0;
+  border-radius: 8px;
+  color: #2a0d35;
+  background: #f2d8ff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.rally-host__round-form button { padding: 9px 13px; }
+
+.rally-host__next-round {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+  padding: 13px 14px;
+  border: 1px solid rgba(255, 235, 255, 0.13);
+  border-radius: 10px;
+  color: rgba(255, 248, 255, 0.92);
+  background: rgba(255, 245, 255, 0.07);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+
+.rally-host__next-round > span { display: flex; align-items: center; gap: 8px; }
+
+.rally-host__section-head { justify-content: space-between; margin-bottom: 9px; }
+.rally-host__section-head small { color: rgba(238, 199, 255, 0.61); font-size: 11px; }
+
+.rally-host__event-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 68px 34px;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.rally-host__event-form input { padding: 9px 10px; font-size: 12px; }
+.rally-host__event-form input::placeholder { color: rgba(255, 244, 255, 0.34); }
+
+.rally-host__event-form button {
+  display: grid;
+  border: 0;
+  border-radius: 9px;
+  color: #2c1234;
+  background: #e6beff;
+  cursor: pointer;
+  place-items: center;
+}
+
+.rally-host__event-list,
+.rally-host__order-list { display: grid; gap: 7px; }
+
+.rally-host__event-row,
+.rally-host__order-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 235, 255, 0.09);
+  border-radius: 9px;
+  background: rgba(255, 245, 255, 0.04);
+}
+
+.rally-host__event-row > div { display: grid; min-width: 0; margin-right: auto; gap: 2px; }
+.rally-host__event-row strong { overflow: hidden; color: rgba(255, 248, 255, 0.83); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.rally-host__event-row span { color: var(--host-green); font-size: 10px; }
+.rally-host__event-row select { width: 82px; padding: 6px 4px; font-size: 10px; }
+.rally-host__event-row select option { color: #1d1124; }
+.rally-host__event-row button { display: inline-flex; align-items: center; gap: 3px; padding: 7px 8px; white-space: nowrap; }
+.rally-host__event-row button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.rally-host__order-row { justify-content: space-between; }
+.rally-host__order-row > span { overflow: hidden; color: rgba(255, 248, 255, 0.75); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.rally-host__order-row button { flex: 0 0 auto; padding: 7px 8px; }
+.rally-host__empty { margin: 4px 0; color: rgba(255, 244, 255, 0.42); font-size: 11px; }
+
+@keyframes rally-ready-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(236, 122, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.27); }
+  50% { box-shadow: 0 0 31px rgba(246, 140, 252, 0.59), inset 0 1px 0 rgba(255, 255, 255, 0.32); }
+}
+
+@media (max-width: 1180px) {
+  .rally-host { grid-template-columns: minmax(0, 1fr) 238px; }
+  .rally-host__stage { padding-left: 6.3vw; padding-right: 5.2vw; }
+  .rally-host__leaderboard { margin-right: 22px; padding: 16px 12px; }
+  .rally-host__rank { grid-template-columns: 14px 25px minmax(0, 1fr) auto; gap: 5px; }
+  .rally-host__avatar { width: 25px; height: 25px; }
+  .rally-host__rank-value strong { font-size: 8px; }
+  .rally-host__mc { right: 38px; left: 300px; }
+}
+
+@media (max-width: 860px) {
+  .rally-host {
+    display: flex;
+    min-height: 100dvh;
+    flex-direction: column;
+    overflow: auto;
+  }
+  .rally-host__topbar { padding-top: 18px; }
+  .rally-host__stage { min-height: 540px; padding: 14px 8vw 160px; }
+  .rally-host__wordmark { font-size: clamp(7rem, 23vw, 12rem); }
+  .rally-host__market { margin-top: 55px; }
+  .rally-host__chart { bottom: 62px; height: 158px; }
+  .rally-host__leaderboard {
+    width: auto;
+    margin: 0 24px 145px;
+    padding: 15px;
+  }
+  .rally-host__rank-list { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 14px; }
+  .rally-host__join-card { position: absolute; bottom: 42px; left: 0; margin: 0 0 0 24px; }
+  .rally-host__mc { right: 24px; bottom: 18px; left: 24px; }
+}
+
+@media (max-width: 560px) {
+  .rally-host__topbar { padding: 14px 16px 0; }
+  .rally-host__round { font-size: 8px; }
+  .rally-host__settings-trigger { padding: 7px 9px; font-size: 11px; }
+  .rally-host__stage { min-height: 490px; padding: 17px 28px 144px; }
+  .rally-host__wordmark { margin-top: 18px; font-size: min(29vw, 9.5rem); }
+  .rally-host__market { margin-top: 55px; }
+  .rally-host__market-name { font-size: 17px; }
+  .rally-host__price { font-size: 38px; }
+  .rally-host__currency { font-size: 22px; }
+  .rally-host__chart { right: -18px; left: -18px; bottom: 44px; height: 120px; }
+  .rally-host__leaderboard { margin: 0 16px 153px; padding: 14px 10px; }
+  .rally-host__rank-list { grid-template-columns: 1fr; gap: 10px; margin-top: 15px; }
+  .rally-host__rank:nth-child(n + 6) { display: none; }
+  .rally-host__join-card { max-width: calc(100% - 32px); margin-left: 16px; padding: 9px; }
+  .rally-host__qr { width: 58px; height: 58px; }
+  .rally-host__join-copy { min-width: 93px; margin-left: 8px; }
+  .rally-host__join-copy b { font-size: 12px; }
+  .rally-host__join-divider { margin: 2px 7px; }
+  .rally-host__rally-trigger { min-width: 88px; }
+  .rally-host__rally-trigger > span { font-size: 12px; }
+  .rally-host__rally-trigger small { max-width: 84px; font-size: 7px; }
+  .rally-host__mc { display: block; bottom: 12px; text-align: center; }
+  .rally-host__mc-label { margin-right: 5px; font-size: 9px; vertical-align: middle; }
+  .rally-host__mc p { display: inline; font-size: 13px; white-space: normal; }
+  .rally-host__dialog-backdrop { padding: 12px; place-items: end center; }
+  .rally-host__dialog { max-height: calc(100dvh - 24px); border-radius: 18px; }
+  .rally-host__dialog-head { padding: 18px 17px 15px; }
+  .rally-host__dialog-scroll { max-height: calc(100dvh - 105px); padding: 17px; }
+  .rally-host__event-row { flex-wrap: wrap; }
+  .rally-host__event-row > div { width: 100%; }
+  .rally-host__event-row select { flex: 1; width: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rally-host *,
+  .rally-host *::before,
+  .rally-host *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
