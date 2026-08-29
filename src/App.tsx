@@ -7,6 +7,10 @@ import type { JoinPayload, PartyNotice, PartySettings, PartyState, Session } fro
 
 const SESSION_KEY = 'rally-session-v1'
 
+function createGuestPhone() {
+  return `010${crypto.getRandomValues(new Uint32Array(1))[0].toString().slice(-8).padStart(8, '0')}`
+}
+
 function readStoredSession(): Session | null {
   try {
     return JSON.parse(localStorage.getItem(SESSION_KEY) ?? 'null') as Session | null
@@ -76,11 +80,11 @@ function HostAccessCard({
 }
 
 function JoinCard({ onJoin }: { onJoin: (payload: Pick<JoinPayload, 'phone' | 'nickname'>) => void }) {
-  const [phone, setPhone] = useState('010')
+  const [phone, setPhone] = useState(createGuestPhone)
   const [nickname, setNickname] = useState('')
   const [error, setError] = useState('')
 
-  return <main className="join-card">
+  return <main className="join-card join-card--guest">
     <div className="lobby__mark" style={{ color: '#11152c', fontSize: 42 }}>Rally</div>
     <h1>파티에 합류하기</h1>
     <p>전화번호는 같은 세션을 찾는 데만 써요.</p>
@@ -90,7 +94,7 @@ function JoinCard({ onJoin }: { onJoin: (payload: Pick<JoinPayload, 'phone' | 'n
       setError('')
       onJoin({ phone: phone.trim(), nickname: nickname.trim().slice(0, 12) })
     }}>
-      <label>전화번호<input value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" /></label>
+      <label>전화번호<input value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" autoComplete="tel" /></label>
       <label>닉네임<input value={nickname} onChange={e => setNickname(e.target.value)} placeholder="예: 소연" maxLength={12} /></label>
       {error && <p className="join-card__error">{error}</p>}
       <button type="submit">입장하기</button>

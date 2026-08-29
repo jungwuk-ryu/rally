@@ -49,6 +49,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(113, 92, 255
 .join-card label { display: grid; gap: 8px; margin-top: 17px; color: #3b4053; font-size: 13px; font-weight: 800; }
 .join-card input { width: 100%; border: 1px solid #e4e6ef; border-radius: 12px; padding: 13px 14px; color: #10152b; background: #fbfbfd; }
 .join-card button { width: 100%; margin-top: 22px; padding: 15px; border: 0; border-radius: 14px; background: #725cff; color: #fff; font-weight: 800; }
+.join-card--guest button { background: #e63b3f; }
+.join-card--guest button:focus-visible, .join-card--guest input:focus-visible { outline-color: rgb(230 59 63 / .42); }
 .join-card button:disabled { cursor: wait; opacity: .7; }
 .host-access-card__back { margin-top: 10px !important; color: #596077 !important; background: #f0f1f6 !important; }
 .join-card .join-card__error { color: #df3f62; font-size: 13px; }
