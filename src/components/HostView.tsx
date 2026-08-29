@@ -83,8 +83,6 @@ function formatTimer(totalSeconds: number) {
   return `${String(Math.floor(safeSeconds / 60)).padStart(2, '0')}:${String(safeSeconds % 60).padStart(2, '0')}`
 }
 
-const SPECTRUM_BARS = [0.45, 0.72, 0.92, 0.58, 0.82, 1, 0.68, 0.9, 0.55, 0.78, 0.96, 0.62, 0.85, 0.5]
-
 function getUserReturn(user: PartyUser, price: number, leverage: number) {
   if (!user.position || user.position.entryPrice <= 0) return 0
   return ((price - user.position.entryPrice) / user.position.entryPrice) * leverage * 100
@@ -137,12 +135,14 @@ export function HostView({
   const [autoRoundOverride, setAutoRoundOverride] = useState<boolean | null>(null)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('live')
   const audioContextRef = useRef<AudioContext | null>(null)
+  const effectContextRef = useRef<AudioContext | null>(null)
   const audioStreamRef = useRef<MediaStream | null>(null)
   const audioFrameRef = useRef<number | null>(null)
   const lastAudioSampleRef = useRef(0)
   const impactTimeoutRef = useRef<number | null>(null)
   const syncTimeoutRef = useRef<number | null>(null)
   const impactSequenceRef = useRef(0)
+  const lastEffectAtRef = useRef(0)
   const lastNoticeIdRef = useRef(party.notice?.id)
   const lastMarketRef = useRef({ symbol: party.market.symbol, price: party.market.price })
   const lastSettingsSignatureRef = useRef(`${party.settings.roundSeconds}:${party.settings.autoRoundEnabled ?? ''}`)
@@ -180,6 +180,10 @@ export function HostView({
 
     setAudioMode('requesting')
     try {
+      if (!effectContextRef.current || effectContextRef.current.state === 'closed') {
+        effectContextRef.current = new AudioContextConstructor()
+      }
+      await effectContextRef.current.resume()
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
       })
@@ -215,6 +219,31 @@ export function HostView({
     }
   }, [audioMode, stopAudio])
 
+  const playEffect = useCallback((kind: 'buy' | 'sell' | 'round') => {
+    const context = audioContextRef.current ?? effectContextRef.current
+    if (!context || context.state !== 'running') return
+
+    const now = context.currentTime
+    if (now - lastEffectAtRef.current < 0.09) return
+    lastEffectAtRef.current = now
+    const config = kind === 'sell'
+      ? { start: 520, end: 170, duration: 0.26, volume: 0.1, wave: 'sawtooth' as OscillatorType }
+      : kind === 'round'
+        ? { start: 260, end: 720, duration: 0.34, volume: 0.09, wave: 'triangle' as OscillatorType }
+        : { start: 370, end: 840, duration: 0.2, volume: 0.085, wave: 'sine' as OscillatorType }
+    const oscillator = context.createOscillator()
+    const gain = context.createGain()
+    oscillator.type = config.wave
+    oscillator.frequency.setValueAtTime(config.start, now)
+    oscillator.frequency.exponentialRampToValueAtTime(config.end, now + config.duration)
+    gain.gain.setValueAtTime(0.0001, now)
+    gain.gain.exponentialRampToValueAtTime(config.volume, now + 0.018)
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + config.duration)
+    oscillator.connect(gain).connect(context.destination)
+    oscillator.start(now)
+    oscillator.stop(now + config.duration + 0.02)
+  }, [])
+
   const triggerImpact = useCallback((nextImpact: HostImpact) => {
     if (impactTimeoutRef.current !== null) window.clearTimeout(impactTimeoutRef.current)
     setImpact({ ...nextImpact, id: ++impactSequenceRef.current })
@@ -240,15 +269,22 @@ export function HostView({
     if (!nextNotice || nextNotice.id === lastNoticeIdRef.current) return
     lastNoticeIdRef.current = nextNotice.id
     const nextImpact = getNoticeImpact(nextNotice)
-    if (nextImpact) triggerImpact(nextImpact)
-  }, [party.notice, triggerImpact])
+    if (!nextImpact) return
+    triggerImpact(nextImpact)
+    playEffect(nextImpact.kind === 'sell' ? 'sell' : 'buy')
+  }, [party.notice, playEffect, triggerImpact])
 
   useEffect(() => {
     const previous = lastMarketRef.current
     const marketChanged = previous.symbol !== party.market.symbol
     const percentage = previous.price > 0 ? ((party.market.price - previous.price) / previous.price) * 100 : 0
     lastMarketRef.current = { symbol: party.market.symbol, price: party.market.price }
-    if (marketChanged || Math.abs(percentage) < 0.28 || Math.abs(percentage) > 20) return
+    if (marketChanged) {
+      triggerImpact({ kind: 'surge', eyebrow: 'NEXT MARKET', title: '종목 전환', detail: `${party.market.name} 라운드를 시작해요.`, strength: 1 })
+      playEffect('round')
+      return
+    }
+    if (Math.abs(percentage) < 0.28 || Math.abs(percentage) > 20) return
 
     const isSurge = percentage > 0
     triggerImpact({
@@ -258,7 +294,7 @@ export function HostView({
       detail: `${isSurge ? '+' : ''}${percentage.toFixed(2)}% 빠르게 움직였어요.`,
       strength: Math.min(1, 0.58 + Math.abs(percentage) / 1.4),
     })
-  }, [party.market.price, party.market.symbol, triggerImpact])
+  }, [party.market.name, party.market.price, party.market.symbol, playEffect, triggerImpact])
 
   useEffect(() => {
     setDuration(String(Math.round(party.settings.roundSeconds / 60)))
@@ -403,16 +439,6 @@ export function HostView({
     >
       <div className="rally-host__grain" aria-hidden="true" />
       <div className="rally-host__audio-wash" aria-hidden="true" />
-      {audioMode !== 'idle' ? (
-        <div className="rally-host__spectrum" aria-hidden="true">
-          {SPECTRUM_BARS.map((height, index) => (
-            <i
-              key={index}
-              style={{ '--spectrum-height': `${height * 100}%`, '--spectrum-delay': `${index * -0.075}s` } as CSSProperties}
-            />
-          ))}
-        </div>
-      ) : null}
       <motion.div
         className="rally-host__aurora rally-host__aurora--violet"
         aria-hidden="true"

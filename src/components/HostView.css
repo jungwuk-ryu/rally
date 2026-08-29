@@ -67,8 +67,7 @@
 .rally-host__grain,
 .rally-host__aurora,
 .rally-host__audio-wash,
-.rally-host__fallback-pulse,
-.rally-host__spectrum {
+.rally-host__fallback-pulse {
   position: absolute;
   inset: 0;
   z-index: -1;
@@ -83,15 +82,16 @@
 
 .rally-host__audio-wash {
   z-index: 0;
-  inset: -18%;
-  opacity: calc(var(--audio-energy, 0) * 0.78);
+  inset: -24%;
+  opacity: calc(var(--audio-energy, 0) * 1.1);
   background:
-    radial-gradient(circle at 62% 30%, rgba(255, 42, 69, 0.94), transparent 35%),
-    radial-gradient(circle at 54% 73%, rgba(255, 132, 63, 0.7), transparent 38%);
-  filter: blur(52px) saturate(165%);
+    radial-gradient(ellipse 64% 88% at 72% 18%, rgba(255, 34, 65, 0.98), transparent 58%),
+    radial-gradient(ellipse 72% 75% at 64% 82%, rgba(255, 93, 54, 0.86), transparent 62%),
+    linear-gradient(112deg, rgba(255, 16, 63, 0.36), rgba(255, 179, 89, 0.44));
+  filter: blur(38px) saturate(190%) brightness(calc(1 + var(--audio-energy, 0) * 0.85));
   mix-blend-mode: screen;
-  transform: scale(calc(1 + var(--audio-energy, 0) * 0.18));
-  transition: opacity 90ms linear, transform 90ms linear;
+  transform: scale(calc(1.02 + var(--audio-energy, 0) * 0.36));
+  transition: opacity 52ms linear, transform 52ms linear, filter 52ms linear;
 }
 
 .rally-host__fallback-pulse {
@@ -128,69 +128,9 @@
   background: radial-gradient(circle, rgba(255, 126, 61, 0.82), transparent 65%);
 }
 
-.rally-host__spectrum {
-  z-index: 0;
-  top: auto;
-  right: clamp(50px, 10vw, 176px);
-  bottom: clamp(88px, 13vh, 148px);
-  left: auto;
-  display: flex;
-  width: min(42vw, 580px);
-  height: clamp(114px, 18vh, 220px);
-  align-items: end;
-  gap: clamp(4px, 0.55vw, 10px);
-  padding: 0 clamp(10px, 1vw, 18px);
-  opacity: 0.28;
-  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
-  mix-blend-mode: screen;
-  transform: perspective(580px) rotateX(8deg);
-  transform-origin: bottom right;
-}
-
-.rally-host__spectrum::before {
-  position: absolute;
-  right: 4%;
-  bottom: 0;
-  left: 4%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 233, 222, 0.7), transparent);
-  box-shadow: 0 0 18px rgba(255, 47, 68, 0.84);
-  content: '';
-}
-
-.rally-host__spectrum i {
-  display: block;
-  min-width: 4px;
-  height: var(--spectrum-height);
-  flex: 1;
-  border-radius: 999px 999px 3px 3px;
-  background: linear-gradient(0deg, #ff173b 0%, #ff4d45 42%, #ffb45d 100%);
-  box-shadow: 0 0 12px rgba(255, 41, 66, 0.78), 0 -8px 22px rgba(255, 152, 84, 0.35);
-  transform: scaleY(0.32);
-  transform-origin: bottom;
-  animation: rally-spectrum-beat 620ms cubic-bezier(.36, 0, .18, 1) var(--spectrum-delay) infinite alternate;
-}
-
 .rally-host--audio-active .rally-host__audio-wash {
-  opacity: calc(0.32 + var(--audio-energy, 0) * 0.82);
-  transform: scale(calc(1.08 + var(--audio-energy, 0) * 0.28));
-}
-
-.rally-host--audio-active .rally-host__spectrum {
-  opacity: calc(0.66 + var(--audio-energy, 0) * 0.34);
-}
-
-.rally-host--fallback .rally-host__spectrum {
-  opacity: 0.78;
-}
-
-.rally-host--fallback .rally-host__spectrum i {
-  animation-duration: 460ms;
-}
-
-@keyframes rally-spectrum-beat {
-  0% { filter: saturate(115%) brightness(0.76); transform: scaleY(0.2); }
-  100% { filter: saturate(172%) brightness(1.42); transform: scaleY(1); }
+  opacity: calc(0.22 + var(--audio-energy, 0) * 1.28);
+  transform: scale(calc(1.08 + var(--audio-energy, 0) * 0.48));
 }
 
 .rally-host__topbar {
