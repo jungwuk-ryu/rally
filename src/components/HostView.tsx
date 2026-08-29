@@ -14,7 +14,7 @@ import {
   X,
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
-import { Area, AreaChart, ResponsiveContainer } from 'recharts'
+import { Area, AreaChart, CartesianGrid, ReferenceDot, ResponsiveContainer, XAxis, YAxis } from 'recharts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, FormEvent } from 'react'
 import type {
@@ -34,7 +34,7 @@ export interface HostViewProps {
   now?: number
   onTriggerRally?: () => void
   onNextRound?: () => void
-  onUpdateSettings?: (settings: Partial<PartySettings>) => void
+  onUpdateSettings?: (settings: Partial<PartySettings>) => void | Promise<boolean | void>
   onCreateEvent?: (title: string, reward: number) => void
   onRewardEvent?: (eventId: string, userId: string) => void
   onServeOrder?: (orderId: string) => void
@@ -44,6 +44,7 @@ const avatarPalette = ['#d2a8ff', '#8ab4ff', '#ffb8cd', '#7be6bc', '#ffcb82', '#
 
 type AudioMode = 'idle' | 'requesting' | 'listening' | 'fallback'
 type ImpactKind = 'buy' | 'add' | 'sell' | 'surge' | 'drop'
+type SyncStatus = 'live' | 'saving' | 'saved' | 'received'
 
 interface HostImpact {
   kind: ImpactKind
@@ -132,14 +133,18 @@ export function HostView({
   const [audioEnergy, setAudioEnergy] = useState(0)
   const [impact, setImpact] = useState<(HostImpact & { id: number }) | null>(null)
   const [autoRoundOverride, setAutoRoundOverride] = useState<boolean | null>(null)
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('live')
   const audioContextRef = useRef<AudioContext | null>(null)
   const audioStreamRef = useRef<MediaStream | null>(null)
   const audioFrameRef = useRef<number | null>(null)
   const lastAudioSampleRef = useRef(0)
   const impactTimeoutRef = useRef<number | null>(null)
+  const syncTimeoutRef = useRef<number | null>(null)
   const impactSequenceRef = useRef(0)
   const lastNoticeIdRef = useRef(party.notice?.id)
   const lastMarketRef = useRef({ symbol: party.market.symbol, price: party.market.price })
+  const lastSettingsSignatureRef = useRef(`${party.settings.roundSeconds}:${party.settings.autoRoundEnabled ?? ''}`)
+  const localSettingWriteRef = useRef(false)
 
   const stopAudio = useCallback((nextMode: Exclude<AudioMode, 'requesting' | 'listening'> = 'idle') => {
     if (audioFrameRef.current !== null) {
@@ -214,8 +219,17 @@ export function HostView({
     impactTimeoutRef.current = window.setTimeout(() => setImpact(null), 2_450)
   }, [])
 
+  const showSyncStatus = useCallback((nextStatus: SyncStatus, duration = 2_700) => {
+    if (syncTimeoutRef.current !== null) window.clearTimeout(syncTimeoutRef.current)
+    setSyncStatus(nextStatus)
+    if (nextStatus !== 'live') {
+      syncTimeoutRef.current = window.setTimeout(() => setSyncStatus('live'), duration)
+    }
+  }, [])
+
   useEffect(() => () => {
     if (impactTimeoutRef.current !== null) window.clearTimeout(impactTimeoutRef.current)
+    if (syncTimeoutRef.current !== null) window.clearTimeout(syncTimeoutRef.current)
     stopAudio()
   }, [stopAudio])
 
@@ -252,6 +266,15 @@ export function HostView({
     if (typeof party.settings.autoRoundEnabled === 'boolean') setAutoRoundOverride(null)
   }, [party.settings.autoRoundEnabled])
 
+  const settingsSignature = `${party.settings.roundSeconds}:${party.settings.autoRoundEnabled ?? ''}`
+
+  useEffect(() => {
+    if (lastSettingsSignatureRef.current === settingsSignature) return
+    lastSettingsSignatureRef.current = settingsSignature
+    showSyncStatus(localSettingWriteRef.current ? 'saved' : 'received')
+    localSettingWriteRef.current = false
+  }, [settingsSignature, showSyncStatus])
+
   const autoRoundEnabled = autoRoundOverride ?? party.settings.autoRoundEnabled ?? true
   const remainingSeconds = party.settings.roundSeconds - (now - party.roundStartedAt) / 1_000
   const investedCredits = party.users.reduce((total, user) => total + (user.position?.amount ?? 0), 0)
@@ -272,9 +295,30 @@ export function HostView({
         .slice(0, 8),
     [party.users],
   )
-  const chartData = useMemo(
-    () => party.market.history.map((value, index) => ({ index, value })),
-    [party.market.history],
+  const chartData = useMemo(() => {
+    const history = party.market.history.filter((value) => Number.isFinite(value) && value > 0)
+    if (history.at(-1) !== party.market.price) history.push(party.market.price)
+    return history.map((value, index) => ({ index, value }))
+  }, [party.market.history, party.market.price])
+  const chartRange = useMemo(() => {
+    const values = chartData.map((point) => point.value)
+    const highest = values.length ? Math.max(...values) : party.market.price
+    const lowest = values.length ? Math.min(...values) : party.market.price
+    const padding = Math.max((highest - lowest) * 0.12, Math.abs(highest) * 0.002, 0.0001)
+    const opening = values[0] ?? party.market.price
+    const current = values.at(-1) ?? party.market.price
+    const traceChange = opening > 0 ? ((current - opening) / opening) * 100 : party.market.changeRate
+    return {
+      highest,
+      lowest,
+      domain: [lowest - padding, highest + padding] as [number, number],
+      traceChange,
+    }
+  }, [chartData, party.market.changeRate, party.market.price])
+  const currentChartPoint = chartData.at(-1)
+  const currentPointTop = Math.min(
+    89,
+    Math.max(11, ((chartRange.domain[1] - (currentChartPoint?.value ?? party.market.price)) / (chartRange.domain[1] - chartRange.domain[0])) * 100),
   )
   const signal = party.market.changeRate >= 0 ? 'up' : 'down'
   const joinPath = `/join/${encodeURIComponent(party.roomCode)}`
@@ -290,16 +334,44 @@ export function HostView({
       : audioMode === 'fallback'
         ? '펄스'
         : '사운드'
+  const syncLabel = syncStatus === 'saving'
+    ? '설정 저장 중'
+    : syncStatus === 'saved'
+      ? '설정 저장됨'
+      : syncStatus === 'received'
+        ? '다른 화면에서 변경됨'
+        : '다른 화면과 동기화'
   const hostStyle = {
     '--audio-energy': audioEnergy.toFixed(3),
     '--impact-energy': impact?.strength.toFixed(3) ?? '0',
   } as CSSProperties
 
+  const publishSettings = useCallback(async (settings: Partial<PartySettings>) => {
+    if (!onUpdateSettings) return false
+    localSettingWriteRef.current = true
+    showSyncStatus('saving', 4_000)
+
+    try {
+      const result = await onUpdateSettings(settings)
+      if (result === false) {
+        localSettingWriteRef.current = false
+        showSyncStatus('live')
+        return false
+      }
+      showSyncStatus('saved')
+      return true
+    } catch {
+      localSettingWriteRef.current = false
+      showSyncStatus('live')
+      return false
+    }
+  }, [onUpdateSettings, showSyncStatus])
+
   function submitSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const minutes = Number(duration)
     if (Number.isFinite(minutes) && minutes >= 1) {
-      onUpdateSettings?.({ roundSeconds: Math.round(minutes * 60) })
+      void publishSettings({ roundSeconds: Math.round(minutes * 60) })
     }
   }
 
@@ -352,14 +424,21 @@ export function HostView({
       )}
 
       <header className="rally-host__topbar">
-        <div className="rally-host__round">
-          <span>ROUND {String(party.round).padStart(2, '0')}</span>
-          <span className="rally-host__round-dot" />
-          {autoRoundEnabled ? (
-            <span>{formatTimer(remainingSeconds)}</span>
-          ) : (
-            <span className="rally-host__manual-round"><b>MANUAL</b> 수동 진행</span>
-          )}
+        <div className="rally-host__top-status">
+          <div className="rally-host__round">
+            <span>ROUND {String(party.round).padStart(2, '0')}</span>
+            <span className="rally-host__round-dot" />
+            {autoRoundEnabled ? (
+              <span>{formatTimer(remainingSeconds)}</span>
+            ) : (
+              <span className="rally-host__manual-round"><b>MANUAL</b> 수동 진행</span>
+            )}
+          </div>
+          <div className={`rally-host__sync is-${syncStatus}`} role="status" aria-live="polite">
+            <span className="rally-host__sync-dot" aria-hidden="true" />
+            <span className="rally-host__sync-word">LIVE SYNC</span>
+            <small>{syncLabel}</small>
+          </div>
         </div>
         <div className="rally-host__top-controls">
           <button
@@ -420,6 +499,13 @@ export function HostView({
         </div>
 
         <div className="rally-host__chart" aria-label={`${party.market.name} 가격 추이`}>
+          <div className="rally-host__chart-meta" aria-label="최근 가격 범위">
+            <span><b>HIGH</b>{formatPrice(chartRange.highest)}</span>
+            <span><b>LOW</b>{formatPrice(chartRange.lowest)}</span>
+            <span className={chartRange.traceChange >= 0 ? 'is-up' : 'is-down'}>
+              <b>TRACE</b>{chartRange.traceChange >= 0 ? '+' : ''}{chartRange.traceChange.toFixed(2)}%
+            </span>
+          </div>
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData} margin={{ top: 24, right: 2, bottom: 2, left: 2 }}>
               <defs>
@@ -428,6 +514,9 @@ export function HostView({
                   <stop offset="100%" stopColor={signal === 'up' ? '#8f6cff' : '#ff607b'} stopOpacity={0} />
                 </linearGradient>
               </defs>
+              <CartesianGrid stroke="rgba(255, 240, 255, 0.12)" strokeDasharray="2 8" vertical={false} />
+              <XAxis dataKey="index" type="number" hide />
+              <YAxis domain={chartRange.domain} hide />
               <Area
                 type="monotone"
                 dataKey="value"
@@ -439,9 +528,23 @@ export function HostView({
                 dot={false}
                 activeDot={false}
               />
+              {currentChartPoint && (
+                <ReferenceDot
+                  x={currentChartPoint.index}
+                  y={currentChartPoint.value}
+                  r={4.5}
+                  fill={signal === 'up' ? '#dfffee' : '#ffe4eb'}
+                  stroke={signal === 'up' ? '#6ee9ba' : '#ff99ae'}
+                  strokeWidth={2}
+                  isFront
+                />
+              )}
             </AreaChart>
           </ResponsiveContainer>
-          <span className="rally-host__chart-glint" aria-hidden="true" />
+          <span className={`rally-host__chart-current rally-host__chart-current--${signal}`} style={{ top: `${currentPointTop}%` }} aria-hidden="true">
+            <i />
+            <small>NOW</small>
+          </span>
         </div>
       </section>
 
@@ -602,6 +705,11 @@ export function HostView({
                 <div>
                   <span>HOST CONTROL</span>
                   <h2>파티 설정</h2>
+                  <div className={`rally-host__dialog-sync is-${syncStatus}`} aria-label={`동기화 상태: ${syncLabel}`}>
+                    <span className="rally-host__sync-dot" aria-hidden="true" />
+                    <span className="rally-host__sync-word">LIVE SYNC</span>
+                    <small>{syncLabel}</small>
+                  </div>
                 </div>
                 <button type="button" onClick={() => setSettingsOpen(false)} aria-label="설정 닫기">
                   <X size={19} />
@@ -622,7 +730,9 @@ export function HostView({
                         onChange={(input) => {
                           const nextAutoRoundEnabled = input.target.checked
                           setAutoRoundOverride(nextAutoRoundEnabled)
-                          onUpdateSettings?.({ autoRoundEnabled: nextAutoRoundEnabled })
+                          void publishSettings({ autoRoundEnabled: nextAutoRoundEnabled }).then((saved) => {
+                            if (!saved) setAutoRoundOverride(null)
+                          })
                         }}
                       />
                       <span aria-hidden="true" />
