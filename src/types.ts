@@ -4,6 +4,7 @@ export interface Market {
   symbol: string
   name: string
   price: number
+  roundStartPrice: number
   previousPrice: number
   changeRate: number
   history: number[]

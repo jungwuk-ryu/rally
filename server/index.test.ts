@@ -16,6 +16,7 @@ test('ticker failures preserve the last actual price and chart history', async (
     symbol: 'KRW-BTC',
     name: '비트코인',
     price: 123_456_000,
+    roundStartPrice: 123_400_000,
     previousPrice: 123_400_000,
     changeRate: 0.05,
     history: [123_100_000, 123_250_000, 123_456_000],

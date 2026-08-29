@@ -358,7 +358,10 @@ export function HostView({
     89,
     Math.max(11, ((chartRange.domain[1] - (currentChartPoint?.value ?? party.market.price)) / (chartRange.domain[1] - chartRange.domain[0])) * 100),
   )
-  const signal = party.market.changeRate >= 0 ? 'up' : 'down'
+  const roundChangeRate = party.market.roundStartPrice > 0
+    ? ((party.market.price - party.market.roundStartPrice) / party.market.roundStartPrice) * 100
+    : 0
+  const signal = roundChangeRate >= 0 ? 'up' : 'down'
   const joinPath = `/join/${encodeURIComponent(party.roomCode)}`
   const inviteUrl = typeof window === 'undefined'
     ? joinPath
@@ -532,7 +535,7 @@ export function HostView({
               {formatPrice(party.market.price)}
             </motion.strong>
             <span className={`rally-host__change rally-host__change--${signal}`}>
-              {party.market.changeRate >= 0 ? '+' : ''}{party.market.changeRate.toFixed(2)}%
+              {roundChangeRate >= 0 ? '+' : ''}{roundChangeRate.toFixed(2)}%
             </span>
           </div>
         </div>

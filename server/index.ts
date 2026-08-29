@@ -366,7 +366,10 @@ function registerSocket(socket: Socket) {
     if (!room) return fail(socket, ack, '호스트 세션을 확인해 주세요.')
     const wasAutoRoundEnabled = room.state.settings.autoRoundEnabled
     room.state.settings = mergeSettings(room.state.settings, payload)
-    if (!wasAutoRoundEnabled && room.state.settings.autoRoundEnabled) room.state.roundStartedAt = Date.now()
+    if (!wasAutoRoundEnabled && room.state.settings.autoRoundEnabled) {
+      room.state.roundStartedAt = Date.now()
+      room.state.market.roundStartPrice = room.state.market.price
+    }
     room.state.notice = notice(
       'event',
       '라운드 설정 변경',
@@ -610,6 +613,7 @@ async function finishRound(room: Room, forcedByHost: boolean) {
   await chooseNextMarket(room)
   room.state.round += 1
   room.state.roundStartedAt = Date.now()
+  room.state.market.roundStartPrice = room.state.market.price
   room.state.rallyActiveUntil = undefined
   room.state.lastRallyAt = undefined
   room.state.notice = notice('round', forcedByHost ? '다음 라운드' : '라운드 종료', `${previousName} 정산 완료 · ${room.state.market.name} 라운드 시작`)
@@ -875,6 +879,7 @@ function fallbackMarket(symbol: string, name: string, fallbackPrice: number): Ma
     symbol,
     name,
     price: initial,
+    roundStartPrice: initial,
     previousPrice: initial,
     changeRate: 0,
     history: Array.from({ length: INITIAL_HISTORY_POINTS }, () => initial),
@@ -888,6 +893,7 @@ export function marketFromActualPrice(symbol: string, name: string, price: numbe
     symbol,
     name,
     price: actual,
+    roundStartPrice: actual,
     previousPrice: actual,
     changeRate: 0,
     history: Array.from({ length: INITIAL_HISTORY_POINTS }, () => actual),
