@@ -162,6 +162,19 @@ function registerSocket(socket: Socket) {
     const room = rooms.get(String(payload?.roomCode ?? '').trim().toUpperCase())
     if (!room) return fail(socket, ack, '파티룸을 찾을 수 없어요.')
 
+    const possibleHostSession = payload as JoinPayload & Partial<Session>
+    if (possibleHostSession.isHost && room.hostId === possibleHostSession.userId) {
+      const session: Session = {
+        roomCode: room.state.roomCode,
+        userId: room.hostId,
+        phone: '',
+        nickname: room.state.hostName,
+        isHost: true,
+      }
+      attachSession(socket, session)
+      return ack?.({ ok: true, state: room.state, session })
+    }
+
     const phone = normalizePhone(payload?.phone)
     const nickname = cleanName(payload?.nickname, '')
     if (!phone || !nickname) return fail(socket, ack, '전화번호와 닉네임을 확인해 주세요.')
@@ -271,7 +284,8 @@ function registerSocket(socket: Socket) {
     ack?.({ ok: true, state: context.room.state })
   })
 
-  socket.on('host:rally', (ack?: (result: Ack) => void) => {
+  socket.on('host:rally', (payloadOrAck?: unknown, possibleAck?: (result: Ack) => void) => {
+    const ack = callbackFrom(payloadOrAck, possibleAck)
     const room = getHostRoom(socket)
     if (!room) return fail(socket, ack, '호스트 세션을 확인해 주세요.')
     const now = Date.now()
@@ -288,7 +302,8 @@ function registerSocket(socket: Socket) {
     ack?.({ ok: true, state: room.state })
   })
 
-  socket.on('host:round-next', (ack?: (result: Ack) => void) => {
+  socket.on('host:round-next', (payloadOrAck?: unknown, possibleAck?: (result: Ack) => void) => {
+    const ack = callbackFrom(payloadOrAck, possibleAck)
     const room = getHostRoom(socket)
     if (!room) return fail(socket, ack, '호스트 세션을 확인해 주세요.')
     finishRound(room, true)
@@ -620,4 +635,8 @@ function roundPrice(value: number) {
 
 function pick<T>(items: readonly T[]): T {
   return items[randomInt(items.length)]
+}
+
+function callbackFrom(value: unknown, fallback?: (result: Ack) => void) {
+  return typeof value === 'function' ? value as (result: Ack) => void : fallback
 }
