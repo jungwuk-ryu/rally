@@ -36,8 +36,38 @@
     linear-gradient(105deg, #090708 0%, #10080e 34%, #3a172d 57%, #844e66 100%);
 }
 
+.rally-host::before {
+  position: absolute;
+  z-index: 0;
+  inset: -16%;
+  opacity: calc(var(--impact-energy, 0) * 0.6);
+  background: radial-gradient(circle at 49% 54%, rgba(184, 135, 255, 0.72), transparent 35%);
+  content: '';
+  filter: blur(34px);
+  mix-blend-mode: screen;
+  pointer-events: none;
+  transform: scale(calc(1 + var(--impact-energy, 0) * 0.18));
+  transition: opacity 180ms ease, transform 260ms ease, background 180ms ease;
+}
+
+.rally-host--impact-buy::before,
+.rally-host--impact-add::before {
+  background: radial-gradient(circle at 46% 58%, rgba(69, 247, 181, 0.65), transparent 38%);
+}
+
+.rally-host--impact-sell::before,
+.rally-host--impact-drop::before {
+  background: radial-gradient(circle at 48% 56%, rgba(255, 88, 137, 0.62), transparent 38%);
+}
+
+.rally-host--impact-surge::before {
+  background: radial-gradient(circle at 48% 54%, rgba(255, 236, 144, 0.48), rgba(113, 171, 255, 0.35) 26%, transparent 48%);
+}
+
 .rally-host__grain,
-.rally-host__aurora {
+.rally-host__aurora,
+.rally-host__audio-wash,
+.rally-host__fallback-pulse {
   position: absolute;
   inset: 0;
   z-index: -1;
@@ -48,6 +78,27 @@
   opacity: 0.15;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.86' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.3'/%3E%3C/svg%3E");
   mix-blend-mode: soft-light;
+}
+
+.rally-host__audio-wash {
+  z-index: 0;
+  inset: -18%;
+  opacity: calc(var(--audio-energy, 0) * 0.78);
+  background:
+    radial-gradient(circle at 62% 30%, rgba(186, 139, 255, 0.74), transparent 35%),
+    radial-gradient(circle at 54% 73%, rgba(255, 164, 209, 0.52), transparent 38%);
+  filter: blur(46px) saturate(125%);
+  mix-blend-mode: screen;
+  transform: scale(calc(1 + var(--audio-energy, 0) * 0.18));
+  transition: opacity 90ms linear, transform 90ms linear;
+}
+
+.rally-host__fallback-pulse {
+  z-index: 0;
+  inset: 16%;
+  border: 1px solid rgba(235, 192, 255, 0.19);
+  border-radius: 50%;
+  box-shadow: 0 0 120px 34px rgba(175, 113, 255, 0.28), inset 0 0 80px rgba(255, 159, 207, 0.14);
 }
 
 .rally-host__aurora--violet {
@@ -85,8 +136,15 @@
   padding: clamp(19px, 3.8vw, 42px) clamp(18px, 3.6vw, 62px) 0;
 }
 
+.rally-host__top-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .rally-host__round,
-.rally-host__settings-trigger {
+.rally-host__settings-trigger,
+.rally-host__audio-trigger {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -114,6 +172,19 @@
   box-shadow: 0 0 9px var(--host-pink);
 }
 
+.rally-host__manual-round {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: rgba(255, 239, 255, 0.72);
+}
+
+.rally-host__manual-round b {
+  color: #ffc2dd;
+  font-size: 8px;
+  letter-spacing: 0.12em;
+}
+
 .rally-host__settings-trigger {
   cursor: pointer;
   padding: 8px 12px;
@@ -122,12 +193,62 @@
   transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
 }
 
+.rally-host__audio-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 11px;
+  border: 1px solid rgba(255, 246, 255, 0.15);
+  color: rgba(255, 247, 255, 0.73);
+  background: rgba(33, 22, 36, 0.18);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.rally-host__audio-trigger:hover,
+.rally-host__audio-trigger:focus-visible {
+  border-color: rgba(255, 246, 255, 0.35);
+  background: rgba(255, 243, 255, 0.13);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.rally-host__audio-trigger:disabled { cursor: wait; opacity: 0.65; }
+
+.rally-host__audio-trigger.is-listening {
+  border-color: rgba(189, 150, 255, 0.58);
+  color: #fff8ff;
+  background: linear-gradient(120deg, rgba(154, 101, 255, 0.34), rgba(255, 148, 204, 0.24));
+  box-shadow: 0 0 calc(8px + var(--audio-energy, 0) * 24px) rgba(207, 143, 255, 0.42);
+}
+
+.rally-host__audio-trigger.is-fallback {
+  border-color: rgba(253, 209, 255, 0.29);
+  color: rgba(255, 239, 255, 0.85);
+}
+
 .rally-host__settings-trigger:hover,
 .rally-host__settings-trigger:focus-visible {
   border-color: rgba(255, 246, 255, 0.35);
   background: rgba(255, 243, 255, 0.13);
   outline: none;
   transform: translateY(-1px);
+}
+
+.rally-host__stage.has-impact { filter: brightness(calc(1 + var(--impact-energy, 0) * 0.13)); }
+
+.rally-host__wordmark.is-impact {
+  filter: brightness(1.2) saturate(1.2);
+  text-shadow:
+    0 2px 1px #fff8ff,
+    0 -3px 7px rgba(241, 189, 255, 0.9),
+    -6px 8px 1px rgba(48, 16, 77, 0.9),
+    -10px 11px 13px rgba(0, 0, 0, 0.78),
+    2px 4px 0 rgba(79, 24, 83, 0.72),
+    7px 9px 5px rgba(249, 137, 39, 0.74),
+    0 0 44px rgba(231, 157, 255, 0.62);
 }
 
 .rally-host__stage {
@@ -172,6 +293,12 @@
 .rally-host__price-row {
   display: flex;
   align-items: baseline;
+}
+
+.rally-host__price-row.is-impact {
+  filter: brightness(1.35) saturate(1.2);
+  transform: scale(1.03);
+  transform-origin: left center;
 }
 
 .rally-host__market-head { gap: 10px; }
@@ -521,6 +648,78 @@
   white-space: nowrap;
 }
 
+.rally-host__impact {
+  position: fixed;
+  z-index: 14;
+  inset: 0;
+  display: grid;
+  overflow: hidden;
+  pointer-events: none;
+  place-items: center;
+}
+
+.rally-host__impact-bloom {
+  position: absolute;
+  width: min(58vw, 880px);
+  aspect-ratio: 1;
+  border: 1px solid rgba(255, 250, 255, 0.65);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(210, 155, 255, 0.58), rgba(173, 91, 255, 0.18) 33%, transparent 66%);
+  box-shadow: 0 0 100px 44px rgba(184, 115, 255, 0.44), inset 0 0 90px rgba(255, 248, 255, 0.18);
+}
+
+.rally-host__impact-copy {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  max-width: min(80vw, 700px);
+  color: #fffaff;
+  place-items: center;
+  text-align: center;
+  text-shadow: 0 4px 30px rgba(29, 5, 43, 0.85);
+}
+
+.rally-host__impact-copy > span {
+  color: rgba(255, 245, 255, 0.74);
+  font-family: 'DM Mono', monospace;
+  font-size: clamp(9px, 1vw, 13px);
+  letter-spacing: 0.18em;
+}
+
+.rally-host__impact-copy strong {
+  font-size: clamp(42px, 7.2vw, 104px);
+  font-weight: 700;
+  letter-spacing: -0.1em;
+  line-height: 0.95;
+}
+
+.rally-host__impact-copy p {
+  margin: 3px 0 0;
+  color: rgba(255, 248, 255, 0.88);
+  font-size: clamp(13px, 1.45vw, 20px);
+  letter-spacing: -0.04em;
+}
+
+.rally-host__impact--buy .rally-host__impact-bloom,
+.rally-host__impact--add .rally-host__impact-bloom {
+  border-color: rgba(155, 255, 211, 0.7);
+  background: radial-gradient(circle, rgba(80, 245, 180, 0.62), rgba(115, 146, 255, 0.17) 34%, transparent 66%);
+  box-shadow: 0 0 110px 47px rgba(72, 237, 174, 0.42), inset 0 0 90px rgba(220, 255, 239, 0.18);
+}
+
+.rally-host__impact--sell .rally-host__impact-bloom,
+.rally-host__impact--drop .rally-host__impact-bloom {
+  border-color: rgba(255, 181, 203, 0.69);
+  background: radial-gradient(circle, rgba(255, 94, 150, 0.6), rgba(255, 138, 109, 0.19) 34%, transparent 66%);
+  box-shadow: 0 0 110px 47px rgba(255, 95, 145, 0.4), inset 0 0 90px rgba(255, 229, 237, 0.16);
+}
+
+.rally-host__impact--surge .rally-host__impact-bloom {
+  border-color: rgba(255, 239, 159, 0.72);
+  background: radial-gradient(circle, rgba(255, 237, 137, 0.56), rgba(111, 181, 255, 0.3) 33%, transparent 66%);
+  box-shadow: 0 0 110px 47px rgba(255, 223, 117, 0.38), inset 0 0 90px rgba(255, 250, 222, 0.18);
+}
+
 .rally-host__moment {
   position: fixed;
   z-index: 20;
@@ -629,6 +828,30 @@
 .rally-host__round-form,
 .rally-host__control-section { padding: 0 0 20px; }
 
+.rally-host__auto-round {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 12px 13px;
+  border: 1px solid rgba(255, 235, 255, 0.11);
+  border-radius: 11px;
+  background: rgba(255, 245, 255, 0.05);
+}
+
+.rally-host__auto-round > div { display: grid; gap: 2px; }
+.rally-host__auto-round strong { color: rgba(255, 248, 255, 0.9); font-size: 13px; }
+.rally-host__auto-round small { color: rgba(255, 244, 255, 0.47); font-size: 10px; letter-spacing: -0.035em; }
+
+.rally-host__switch { position: relative; display: inline-flex; flex: 0 0 auto; width: 39px; height: 23px; cursor: pointer; }
+.rally-host__switch input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.rally-host__switch span { width: 100%; border: 1px solid rgba(255, 240, 255, 0.17); border-radius: 999px; background: rgba(255, 244, 255, 0.13); transition: background 160ms ease, border-color 160ms ease; }
+.rally-host__switch span::after { position: absolute; top: 4px; left: 4px; width: 13px; height: 13px; border-radius: 50%; background: rgba(255, 248, 255, 0.76); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); content: ''; transition: transform 160ms ease, background 160ms ease; }
+.rally-host__switch input:checked + span { border-color: rgba(201, 166, 255, 0.64); background: #936eff; }
+.rally-host__switch input:checked + span::after { background: #fffaff; transform: translateX(16px); }
+.rally-host__switch input:focus-visible + span { outline: 2px solid rgba(235, 202, 255, 0.82); outline-offset: 3px; }
+
 .rally-host__round-form label,
 .rally-host__section-head > span {
   color: rgba(255, 246, 255, 0.75);
@@ -679,6 +902,8 @@
 }
 
 .rally-host__round-form button { padding: 9px 13px; }
+.rally-host__round-form button:disabled,
+.rally-host__round-form input:disabled { cursor: not-allowed; opacity: 0.42; }
 
 .rally-host__next-round {
   display: flex;
@@ -788,7 +1013,10 @@
 @media (max-width: 560px) {
   .rally-host__topbar { padding: 14px 16px 0; }
   .rally-host__round { font-size: 8px; }
+  .rally-host__top-controls { gap: 5px; }
   .rally-host__settings-trigger { padding: 7px 9px; font-size: 11px; }
+  .rally-host__audio-trigger { padding: 7px 8px; font-size: 10px; }
+  .rally-host__audio-trigger svg { width: 14px; height: 14px; }
   .rally-host__stage { min-height: 490px; padding: 17px 28px 144px; }
   .rally-host__wordmark { margin-top: 18px; font-size: min(29vw, 9.5rem); }
   .rally-host__market { margin-top: 55px; }
@@ -814,6 +1042,8 @@
   .rally-host__dialog { max-height: calc(100dvh - 24px); border-radius: 18px; }
   .rally-host__dialog-head { padding: 18px 17px 15px; }
   .rally-host__dialog-scroll { max-height: calc(100dvh - 105px); padding: 17px; }
+  .rally-host__impact-copy strong { font-size: clamp(39px, 13vw, 64px); }
+  .rally-host__impact-copy p { max-width: 82vw; font-size: 13px; }
   .rally-host__event-row { flex-wrap: wrap; }
   .rally-host__event-row > div { width: 100%; }
   .rally-host__event-row select { flex: 1; width: auto; }

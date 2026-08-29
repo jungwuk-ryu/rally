@@ -4,17 +4,21 @@ import {
   ChevronRight,
   Crown,
   ListOrdered,
+  Mic,
   PartyPopper,
   Play,
   Settings2,
   Sparkles,
   TimerReset,
+  Volume2,
   X,
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { Area, AreaChart, ResponsiveContainer } from 'recharts'
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties, FormEvent } from 'react'
 import type {
+  PartyNotice,
   PartyOrder,
   PartySettings,
   PartyState,
@@ -37,6 +41,17 @@ export interface HostViewProps {
 }
 
 const avatarPalette = ['#d2a8ff', '#8ab4ff', '#ffb8cd', '#7be6bc', '#ffcb82', '#b9b1ff']
+
+type AudioMode = 'idle' | 'requesting' | 'listening' | 'fallback'
+type ImpactKind = 'buy' | 'add' | 'sell' | 'surge' | 'drop'
+
+interface HostImpact {
+  kind: ImpactKind
+  eyebrow: string
+  title: string
+  detail: string
+  strength: number
+}
 
 function useCurrentTime(override?: number) {
   const [now, setNow] = useState(() => Date.now())
@@ -72,13 +87,28 @@ function getUserReturn(user: PartyUser, price: number) {
   return ((price - user.position.entryPrice) / user.position.entryPrice) * 100
 }
 
-function getLeaderboardValue(user: PartyUser, price: number) {
-  if (!user.position) return user.credit + user.pnl
-  return user.credit + user.pnl + user.position.amount * (price / user.position.entryPrice)
+function getLeaderboardValue(user: PartyUser) {
+  return user.credit + (user.position ? user.position.amount + user.pnl : 0)
 }
 
 function userEmoji(index: number) {
   return ['✦', '●', '♟', '♥', '✳', '☽', '◉', '✺'][index % 8]
+}
+
+function getNoticeImpact(notice: PartyNotice): HostImpact | null {
+  const message = `${notice.title} ${notice.body}`
+
+  if (/(매도|청산|정리)/.test(message)) {
+    return { kind: 'sell', eyebrow: 'POSITION OUT', title: '매도 정리', detail: notice.body, strength: 0.86 }
+  }
+  if (/(추가\s*(매수|참여|투자)|더\s*(매수|참여|투자))/.test(message)) {
+    return { kind: 'add', eyebrow: 'MORE IN', title: '추가 매수', detail: notice.body, strength: 0.9 }
+  }
+  if (/(매수|참여|투자|포지션)/.test(message)) {
+    return { kind: 'buy', eyebrow: 'POSITION IN', title: '매수 체결', detail: notice.body, strength: 0.78 }
+  }
+
+  return null
 }
 
 export function HostView({
@@ -98,11 +128,131 @@ export function HostView({
   const [eventTitle, setEventTitle] = useState('')
   const [eventReward, setEventReward] = useState('30')
   const [selectedUsers, setSelectedUsers] = useState<Record<string, string>>({})
+  const [audioMode, setAudioMode] = useState<AudioMode>('idle')
+  const [audioEnergy, setAudioEnergy] = useState(0)
+  const [impact, setImpact] = useState<(HostImpact & { id: number }) | null>(null)
+  const [autoRoundOverride, setAutoRoundOverride] = useState<boolean | null>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const audioStreamRef = useRef<MediaStream | null>(null)
+  const audioFrameRef = useRef<number | null>(null)
+  const lastAudioSampleRef = useRef(0)
+  const impactTimeoutRef = useRef<number | null>(null)
+  const impactSequenceRef = useRef(0)
+  const lastNoticeIdRef = useRef(party.notice?.id)
+  const lastMarketRef = useRef({ symbol: party.market.symbol, price: party.market.price })
+
+  const stopAudio = useCallback((nextMode: Exclude<AudioMode, 'requesting' | 'listening'> = 'idle') => {
+    if (audioFrameRef.current !== null) {
+      window.cancelAnimationFrame(audioFrameRef.current)
+      audioFrameRef.current = null
+    }
+    audioStreamRef.current?.getTracks().forEach((track) => track.stop())
+    audioStreamRef.current = null
+    const activeContext = audioContextRef.current
+    audioContextRef.current = null
+    if (activeContext && activeContext.state !== 'closed') {
+      void activeContext.close().catch(() => undefined)
+    }
+    setAudioEnergy(nextMode === 'fallback' ? 0.34 : 0)
+    setAudioMode(nextMode)
+  }, [])
+
+  const toggleAudio = useCallback(async () => {
+    if (audioMode === 'listening') {
+      stopAudio()
+      return
+    }
+    if (audioMode === 'requesting') return
+
+    const AudioContextConstructor = window.AudioContext
+      ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!navigator.mediaDevices?.getUserMedia || !AudioContextConstructor) {
+      stopAudio('fallback')
+      return
+    }
+
+    setAudioMode('requesting')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      })
+      const context = new AudioContextConstructor()
+      const analyser = context.createAnalyser()
+      analyser.fftSize = 256
+      analyser.smoothingTimeConstant = 0.76
+      context.createMediaStreamSource(stream).connect(analyser)
+      await context.resume()
+
+      audioStreamRef.current = stream
+      audioContextRef.current = context
+      lastAudioSampleRef.current = 0
+      const samples = new Uint8Array(analyser.fftSize)
+      const readEnergy = (timestamp: number) => {
+        analyser.getByteTimeDomainData(samples)
+        let sum = 0
+        for (const sample of samples) {
+          const normalized = (sample - 128) / 128
+          sum += normalized * normalized
+        }
+        const rawEnergy = Math.min(1, Math.sqrt(sum / samples.length) * 6.2)
+        if (timestamp - lastAudioSampleRef.current > 42) {
+          lastAudioSampleRef.current = timestamp
+          setAudioEnergy((current) => current * 0.58 + rawEnergy * 0.42)
+        }
+        audioFrameRef.current = window.requestAnimationFrame(readEnergy)
+      }
+      setAudioMode('listening')
+      audioFrameRef.current = window.requestAnimationFrame(readEnergy)
+    } catch {
+      stopAudio('fallback')
+    }
+  }, [audioMode, stopAudio])
+
+  const triggerImpact = useCallback((nextImpact: HostImpact) => {
+    if (impactTimeoutRef.current !== null) window.clearTimeout(impactTimeoutRef.current)
+    setImpact({ ...nextImpact, id: ++impactSequenceRef.current })
+    impactTimeoutRef.current = window.setTimeout(() => setImpact(null), 2_450)
+  }, [])
+
+  useEffect(() => () => {
+    if (impactTimeoutRef.current !== null) window.clearTimeout(impactTimeoutRef.current)
+    stopAudio()
+  }, [stopAudio])
+
+  useEffect(() => {
+    const nextNotice = party.notice
+    if (!nextNotice || nextNotice.id === lastNoticeIdRef.current) return
+    lastNoticeIdRef.current = nextNotice.id
+    const nextImpact = getNoticeImpact(nextNotice)
+    if (nextImpact) triggerImpact(nextImpact)
+  }, [party.notice, triggerImpact])
+
+  useEffect(() => {
+    const previous = lastMarketRef.current
+    const marketChanged = previous.symbol !== party.market.symbol
+    const percentage = previous.price > 0 ? ((party.market.price - previous.price) / previous.price) * 100 : 0
+    lastMarketRef.current = { symbol: party.market.symbol, price: party.market.price }
+    if (marketChanged || Math.abs(percentage) < 0.28 || Math.abs(percentage) > 20) return
+
+    const isSurge = percentage > 0
+    triggerImpact({
+      kind: isSurge ? 'surge' : 'drop',
+      eyebrow: isSurge ? 'MARKET SURGE' : 'MARKET DIP',
+      title: isSurge ? '가격 급등' : '가격 급락',
+      detail: `${isSurge ? '+' : ''}${percentage.toFixed(2)}% 빠르게 움직였어요.`,
+      strength: Math.min(1, 0.58 + Math.abs(percentage) / 1.4),
+    })
+  }, [party.market.price, party.market.symbol, triggerImpact])
 
   useEffect(() => {
     setDuration(String(Math.round(party.settings.roundSeconds / 60)))
   }, [party.settings.roundSeconds])
 
+  useEffect(() => {
+    if (typeof party.settings.autoRoundEnabled === 'boolean') setAutoRoundOverride(null)
+  }, [party.settings.autoRoundEnabled])
+
+  const autoRoundEnabled = autoRoundOverride ?? party.settings.autoRoundEnabled ?? true
   const remainingSeconds = party.settings.roundSeconds - (now - party.roundStartedAt) / 1_000
   const investedCredits = party.users.reduce((total, user) => total + (user.position?.amount ?? 0), 0)
   const cooldownLeft = party.lastRallyAt
@@ -118,9 +268,9 @@ export function HostView({
   const leaderboard = useMemo(
     () =>
       [...party.users]
-        .sort((a, b) => getLeaderboardValue(b, party.market.price) - getLeaderboardValue(a, party.market.price))
+        .sort((a, b) => getLeaderboardValue(b) - getLeaderboardValue(a))
         .slice(0, 8),
-    [party.market.price, party.users],
+    [party.users],
   )
   const chartData = useMemo(
     () => party.market.history.map((value, index) => ({ index, value })),
@@ -133,6 +283,17 @@ export function HostView({
     : `${window.location.origin}${joinPath}`
   const activeEvents = party.events.filter((event) => event.active)
   const pendingOrders = party.orders.filter((order) => !order.served)
+  const audioLabel = audioMode === 'requesting'
+    ? '연결 중'
+    : audioMode === 'listening'
+      ? '사운드 ON'
+      : audioMode === 'fallback'
+        ? '펄스'
+        : '사운드'
+  const hostStyle = {
+    '--audio-energy': audioEnergy.toFixed(3),
+    '--impact-energy': impact?.strength.toFixed(3) ?? '0',
+  } as CSSProperties
 
   function submitSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -161,8 +322,13 @@ export function HostView({
   }
 
   return (
-    <main className={`rally-host rally-host--${signal}`} aria-label="Rally 호스트 화면">
+    <main
+      className={`rally-host rally-host--${signal}${audioMode !== 'idle' ? ' rally-host--audio-active' : ''}${audioMode === 'fallback' ? ' rally-host--fallback' : ''}${impact ? ` rally-host--impact-${impact.kind}` : ''}`}
+      style={hostStyle}
+      aria-label="Rally 호스트 화면"
+    >
       <div className="rally-host__grain" aria-hidden="true" />
+      <div className="rally-host__audio-wash" aria-hidden="true" />
       <motion.div
         className="rally-host__aurora rally-host__aurora--violet"
         aria-hidden="true"
@@ -176,26 +342,52 @@ export function HostView({
         transition={{ duration: 16, repeat: Infinity, ease: 'easeInOut' }}
       />
 
+      {audioMode === 'fallback' && !reduceMotion && (
+        <motion.div
+          className="rally-host__fallback-pulse"
+          aria-hidden="true"
+          animate={{ opacity: [0.12, 0.36, 0.12], scale: [0.92, 1.08, 0.92] }}
+          transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
+        />
+      )}
+
       <header className="rally-host__topbar">
         <div className="rally-host__round">
           <span>ROUND {String(party.round).padStart(2, '0')}</span>
           <span className="rally-host__round-dot" />
-          <span>{formatTimer(remainingSeconds)}</span>
+          {autoRoundEnabled ? (
+            <span>{formatTimer(remainingSeconds)}</span>
+          ) : (
+            <span className="rally-host__manual-round"><b>MANUAL</b> 수동 진행</span>
+          )}
         </div>
-        <button
-          className="rally-host__settings-trigger"
-          type="button"
-          onClick={() => setSettingsOpen(true)}
-          aria-label="호스트 설정 열기"
-        >
-          <Settings2 size={16} strokeWidth={1.7} />
-          <span>설정</span>
-        </button>
+        <div className="rally-host__top-controls">
+          <button
+            className={`rally-host__audio-trigger${audioMode === 'listening' ? ' is-listening' : ''}${audioMode === 'fallback' ? ' is-fallback' : ''}`}
+            type="button"
+            onClick={toggleAudio}
+            disabled={audioMode === 'requesting'}
+            aria-pressed={audioMode === 'listening'}
+            aria-label={audioMode === 'listening' ? '사운드 반응 끄기' : '마이크로 사운드 반응 켜기'}
+          >
+            {audioMode === 'listening' ? <Volume2 size={16} strokeWidth={1.7} /> : <Mic size={16} strokeWidth={1.7} />}
+            <span>{audioLabel}</span>
+          </button>
+          <button
+            className="rally-host__settings-trigger"
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            aria-label="호스트 설정 열기"
+          >
+            <Settings2 size={16} strokeWidth={1.7} />
+            <span>설정</span>
+          </button>
+        </div>
       </header>
 
-      <section className="rally-host__stage" aria-live="polite">
+      <section className={`rally-host__stage${impact ? ' has-impact' : ''}`} aria-live="polite">
         <motion.h1
-          className="rally-host__wordmark"
+          className={`rally-host__wordmark${impact ? ' is-impact' : ''}`}
           initial={reduceMotion ? false : { opacity: 0, y: 26, rotate: -1.6 }}
           animate={{ opacity: 1, y: 0, rotate: -1.6 }}
           transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
@@ -210,7 +402,7 @@ export function HostView({
               {party.market.source === 'fallback' ? 'DEMO' : 'UPBIT'}
             </span>
           </div>
-          <div className="rally-host__price-row">
+          <div className={`rally-host__price-row${impact?.kind === 'surge' || impact?.kind === 'drop' ? ' is-impact' : ''}`}>
             <span className="rally-host__currency">₩</span>
             <motion.strong
               key={party.market.price}
@@ -262,7 +454,7 @@ export function HostView({
         <ol className="rally-host__rank-list">
           {leaderboard.map((user, index) => {
             const returnRate = getUserReturn(user, party.market.price)
-            const rankValue = getLeaderboardValue(user, party.market.price)
+            const rankValue = getLeaderboardValue(user)
             return (
               <li className="rally-host__rank" key={user.id}>
                 <span className={`rally-host__rank-number${index === 0 ? ' rally-host__rank-number--first' : ''}`}>
@@ -327,6 +519,36 @@ export function HostView({
       </footer>
 
       <AnimatePresence>
+        {impact && (
+          <motion.div
+            className={`rally-host__impact rally-host__impact--${impact.kind}`}
+            role="status"
+            initial={reduceMotion ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: reduceMotion ? 0.01 : 0.24 }}
+          >
+            <motion.div
+              className="rally-host__impact-bloom"
+              animate={reduceMotion ? undefined : { scale: [0.72, 1.42], opacity: [0.82, 0] }}
+              transition={{ duration: 1.12, ease: 'easeOut' }}
+            />
+            <motion.div
+              className="rally-host__impact-copy"
+              initial={reduceMotion ? false : { y: 26, scale: 0.9, opacity: 0 }}
+              animate={{ y: 0, scale: 1, opacity: 1 }}
+              exit={{ y: -8, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+            >
+              <span>{impact.eyebrow}</span>
+              <strong>{impact.title}</strong>
+              <p>{impact.detail}</p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {party.rallyActiveUntil && party.rallyActiveUntil > now && (
           <motion.div
             className="rally-host__moment"
@@ -388,6 +610,24 @@ export function HostView({
 
               <div className="rally-host__dialog-scroll">
                 <form className="rally-host__round-form" onSubmit={submitSettings}>
+                  <div className="rally-host__auto-round">
+                    <div>
+                      <strong>자동 전환</strong>
+                      <small>{autoRoundEnabled ? '시간이 끝나면 다음 종목으로 넘어가요.' : '호스트가 다음 라운드를 직접 시작해요.'}</small>
+                    </div>
+                    <label className="rally-host__switch" aria-label="자동 전환">
+                      <input
+                        type="checkbox"
+                        checked={autoRoundEnabled}
+                        onChange={(input) => {
+                          const nextAutoRoundEnabled = input.target.checked
+                          setAutoRoundOverride(nextAutoRoundEnabled)
+                          onUpdateSettings?.({ autoRoundEnabled: nextAutoRoundEnabled })
+                        }}
+                      />
+                      <span aria-hidden="true" />
+                    </label>
+                  </div>
                   <label htmlFor="round-minutes">라운드 시간</label>
                   <div>
                     <input
@@ -397,10 +637,11 @@ export function HostView({
                       max="60"
                       inputMode="numeric"
                       value={duration}
+                      disabled={!autoRoundEnabled}
                       onChange={(event) => setDuration(event.target.value)}
                     />
                     <span>분</span>
-                    <button type="submit">적용</button>
+                    <button type="submit" disabled={!autoRoundEnabled}>적용</button>
                   </div>
                 </form>
 
