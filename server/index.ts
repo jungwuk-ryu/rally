@@ -8,6 +8,7 @@ import { resolve } from 'node:path'
 import cors from 'cors'
 import express from 'express'
 import { Server, type Socket } from 'socket.io'
+import WebSocket, { type RawData } from 'ws'
 
 import type {
   JoinPayload,
@@ -24,12 +25,15 @@ import type {
 } from '../src/types.js'
 
 const PORT = numberFromEnv(process.env.PORT, 8829)
-const PRICE_POLL_INTERVAL_MS = 3_000
 const ROUND_CHECK_INTERVAL_MS = 1_000
+const REST_RECOVERY_INTERVAL_MS = 15_000
+const STREAM_STALE_MS = 15_000
+const STREAM_RECONNECT_MAX_MS = 10_000
 const MAX_PRICE_HISTORY = 72
 const RALLY_DURATION_MS = 8_000
 const UPBIT_TICKER_ENDPOINT = 'https://api.upbit.com/v1/ticker'
 const UPBIT_MINUTE_CANDLES_ENDPOINT = 'https://api.upbit.com/v1/candles/minutes/1'
+const UPBIT_TICKER_WEBSOCKET_ENDPOINT = 'wss://api.upbit.com/websocket/v1'
 const INITIAL_HISTORY_POINTS = 40
 const HOST_PASSWORD = process.env.HOST_PASSWORD?.trim() || '123456'
 
@@ -83,6 +87,10 @@ interface Ack {
 const rooms = new Map<string, Room>()
 const sessions = new Map<string, Session>()
 let activeRoomCode: string | undefined
+let upbitTickerSocket: WebSocket | undefined
+let upbitReconnectTimer: ReturnType<typeof setTimeout> | undefined
+let upbitReconnectDelayMs = 500
+let lastUpbitStreamMessageAt = 0
 
 const app = express()
 app.disable('x-powered-by')
@@ -111,6 +119,7 @@ const io = new Server(httpServer, {
 
 if (process.env.RALLY_TEST_MODE !== '1') {
   io.on('connection', (socket) => registerSocket(socket))
+  connectUpbitTickerStream()
 
   setInterval(() => {
     for (const room of rooms.values()) {
@@ -126,8 +135,11 @@ if (process.env.RALLY_TEST_MODE !== '1') {
   }, ROUND_CHECK_INTERVAL_MS).unref()
 
   setInterval(() => {
-    void pollMarkets()
-  }, PRICE_POLL_INTERVAL_MS).unref()
+    if (isUpbitStreamStale()) {
+      void pollMarkets()
+      connectUpbitTickerStream()
+    }
+  }, REST_RECOVERY_INTERVAL_MS).unref()
 
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.info(`[rally] server listening on ${PORT}`)
@@ -579,6 +591,85 @@ async function refreshMarket(room: Room) {
 
   if (Math.abs(market.changeRate) >= 0.45) announceMc(room, 'priceMove')
   broadcast(room)
+}
+
+function connectUpbitTickerStream() {
+  if (upbitTickerSocket && (upbitTickerSocket.readyState === WebSocket.OPEN || upbitTickerSocket.readyState === WebSocket.CONNECTING)) return
+
+  try {
+    const socket = new WebSocket(UPBIT_TICKER_WEBSOCKET_ENDPOINT)
+    upbitTickerSocket = socket
+    socket.on('open', () => {
+      upbitReconnectDelayMs = 500
+      try {
+        socket.send(JSON.stringify([
+          { ticket: `rally-${randomUUID()}` },
+          { type: 'ticker', codes: MARKET_POOL.map((market) => market.symbol) },
+          { format: 'SIMPLE' },
+        ]))
+      } catch {
+        socket.terminate()
+      }
+    })
+    socket.on('message', (data) => consumeUpbitTickerMessage(data))
+    socket.on('error', () => undefined)
+    socket.on('close', () => {
+      if (upbitTickerSocket !== socket) return
+      upbitTickerSocket = undefined
+      scheduleUpbitStreamReconnect()
+    })
+  } catch {
+    scheduleUpbitStreamReconnect()
+  }
+}
+
+function scheduleUpbitStreamReconnect() {
+  if (upbitReconnectTimer) return
+  const delay = upbitReconnectDelayMs
+  upbitReconnectDelayMs = Math.min(upbitReconnectDelayMs * 2, STREAM_RECONNECT_MAX_MS)
+  upbitReconnectTimer = setTimeout(() => {
+    upbitReconnectTimer = undefined
+    connectUpbitTickerStream()
+  }, delay)
+  upbitReconnectTimer.unref()
+}
+
+function isUpbitStreamStale() {
+  return lastUpbitStreamMessageAt === 0 || Date.now() - lastUpbitStreamMessageAt > STREAM_STALE_MS
+}
+
+function consumeUpbitTickerMessage(data: RawData) {
+  const ticker = parseUpbitTicker(data)
+  if (!ticker) return
+  lastUpbitStreamMessageAt = Date.now()
+
+  for (const room of rooms.values()) {
+    if (room.state.market.symbol !== ticker.symbol) continue
+    const market = room.state.market
+    applyMarketPrice(market, ticker.price, 'upbit')
+    refreshPnls(room)
+    if (Math.abs(market.changeRate) >= 0.45) announceMc(room, 'priceMove')
+    broadcast(room)
+  }
+}
+
+export function parseUpbitTicker(data: RawData | string) {
+  try {
+    const message = JSON.parse(upbitMessageText(data)) as { code?: unknown; cd?: unknown; trade_price?: unknown; tp?: unknown }
+    const symbol = String(message.code ?? message.cd ?? '').toUpperCase()
+    const price = Number(message.trade_price ?? message.tp)
+    if (!MARKET_POOL.some((market) => market.symbol === symbol) || !Number.isFinite(price) || price <= 0) return undefined
+    return { symbol, price }
+  } catch {
+    return undefined
+  }
+}
+
+function upbitMessageText(data: RawData | string) {
+  if (typeof data === 'string') return data
+  if (Array.isArray(data)) return Buffer.concat(data).toString('utf8')
+  if (data instanceof ArrayBuffer) return Buffer.from(data).toString('utf8')
+  return data.toString('utf8')
 }
 
 export async function pollMarketPrice(market: Market, request: typeof fetch = fetch) {

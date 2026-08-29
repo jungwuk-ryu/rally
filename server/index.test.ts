@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { Market } from '../src/types.js'
-import { pollMarketPrice } from './index.js'
+import { parseUpbitTicker, pollMarketPrice } from './index.js'
 
 test('ticker failures preserve the last actual price and chart history', async () => {
   const market: Market = {
@@ -22,4 +22,11 @@ test('ticker failures preserve the last actual price and chart history', async (
   assert.equal(await pollMarketPrice(market, failingRequest), false)
   assert.equal(await pollMarketPrice(market, failingRequest), false)
   assert.deepEqual(market, before)
+})
+
+test('Upbit SIMPLE ticker messages expose the subscribed symbol and price', () => {
+  assert.deepEqual(
+    parseUpbitTicker(JSON.stringify({ ty: 'ticker', cd: 'KRW-BTC', tp: 123_456_000 })),
+    { symbol: 'KRW-BTC', price: 123_456_000 },
+  )
 })
