@@ -20,7 +20,7 @@ function Lobby({ onHost, onJoin }: { onHost: () => void; onJoin: () => void }) {
     <div className="lobby__mark">Rally</div>
     <section className="lobby__body">
       <h1>오늘의 파티,<br />같이 올라타요.</h1>
-      <p>한 화면의 시세와 여러 휴대폰이 같은 라운드를 즐깁니다.</p>
+      <p>한 화면의 시세를 보며 여러 휴대폰이 같은 라운드를 즐겨요.</p>
       <div className="lobby__actions">
         <button className="lobby__button lobby__button--primary" onClick={onHost}>파티 열기 <ArrowRight size={16} /></button>
         <button className="lobby__button lobby__button--subtle" onClick={onJoin}><Users size={16} /> 파티 입장</button>

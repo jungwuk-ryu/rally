@@ -230,7 +230,7 @@ function TopUpSheet({ onClose, onTopUp }: { onClose: () => void; onTopUp: (amoun
           <CircleDollarSign size={27} />
         </div>
         <h2 id="topup-sheet-title">크레딧 추가</h2>
-        <p>파티에서 쓸 크레딧을 더해요.</p>
+        <p>파티 크레딧을 더해요.</p>
         <div className="guest-topup-values">
           {TOP_UP_VALUES.map((value) => (
             <button
@@ -455,7 +455,7 @@ export function GuestView({ party, session, onInvest, onOpenPosition, onTopUp, o
                   <div className="guest-section-heading">
                     <div>
                       <h2 id="guest-events-heading">진행 중인 이벤트</h2>
-                      <p>호스트가 확인하면 보상이 들어와요</p>
+                      <p>호스트가 확인하면 보상을 받아요</p>
                     </div>
                     <Sparkles size={21} aria-hidden="true" />
                   </div>
