@@ -51,4 +51,30 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(113, 92, 255
 .join-card button { width: 100%; margin-top: 22px; padding: 15px; border: 0; border-radius: 14px; background: #725cff; color: #fff; font-weight: 800; }
 .join-card .join-card__error { color: #df3f62; font-size: 13px; }
 
+.app-error-toast {
+  position: fixed;
+  z-index: 200;
+  top: max(16px, env(safe-area-inset-top));
+  left: 50%;
+  display: flex;
+  width: min(calc(100% - 32px), 440px);
+  align-items: center;
+  gap: 9px;
+  padding: 12px 12px 12px 14px;
+  color: #8e183a;
+  border: 1px solid #f4becd;
+  border-radius: 14px;
+  background: rgb(255 246 249 / 0.97);
+  box-shadow: 0 12px 28px rgb(62 18 32 / 0.16);
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.35;
+  transform: translateX(-50%);
+}
+
+.app-error-toast > svg { flex: 0 0 auto; }
+.app-error-toast > span { min-width: 0; flex: 1; }
+.app-error-toast button { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; color: inherit; border: 0; border-radius: 8px; background: transparent; }
+.app-error-toast button:hover { background: rgb(142 24 58 / 0.08); }
+
 @media (max-width: 520px) { .join-card { min-height: 100vh; margin: 0; border-radius: 0; padding: 36px 24px; box-shadow: none; } }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowRight, Users } from 'lucide-react'
+import { AlertCircle, ArrowRight, Users, X } from 'lucide-react'
 import { HostView } from './components/HostView'
 import { GuestView } from './components/GuestView'
 import { emitWithAck, socket, type BootstrapResponse } from './lib/realtime'
@@ -29,8 +29,7 @@ function Lobby({ onHost, onJoin }: { onHost: () => void; onJoin: () => void }) {
   </main>
 }
 
-function JoinCard({ initialRoomCode, onJoin }: { initialRoomCode: string; onJoin: (payload: JoinPayload) => void }) {
-  const [roomCode, setRoomCode] = useState(initialRoomCode)
+function JoinCard({ onJoin }: { onJoin: (payload: Pick<JoinPayload, 'phone' | 'nickname'>) => void }) {
   const [phone, setPhone] = useState('010')
   const [nickname, setNickname] = useState('')
   const [error, setError] = useState('')
@@ -41,11 +40,10 @@ function JoinCard({ initialRoomCode, onJoin }: { initialRoomCode: string; onJoin
     <p>전화번호는 같은 세션을 찾는 데만 써요.</p>
     <form onSubmit={(event) => {
       event.preventDefault()
-      if (!roomCode.trim() || !phone.trim() || !nickname.trim()) return setError('방 코드와 정보를 모두 입력해주세요.')
+      if (!phone.trim() || !nickname.trim()) return setError('전화번호와 닉네임을 모두 입력해 주세요.')
       setError('')
-      onJoin({ roomCode: roomCode.trim().toUpperCase(), phone: phone.trim(), nickname: nickname.trim().slice(0, 12) })
+      onJoin({ phone: phone.trim(), nickname: nickname.trim().slice(0, 12) })
     }}>
-      <label>방 코드<input value={roomCode} onChange={e => setRoomCode(e.target.value)} placeholder="RALLY-7K2P" autoCapitalize="characters" /></label>
       <label>전화번호<input value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" /></label>
       <label>닉네임<input value={nickname} onChange={e => setNickname(e.target.value)} placeholder="예: 소연" maxLength={12} /></label>
       {error && <p className="join-card__error">{error}</p>}
@@ -54,12 +52,21 @@ function JoinCard({ initialRoomCode, onJoin }: { initialRoomCode: string; onJoin
   </main>
 }
 
+function AppErrorNotice({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  if (!message) return null
+  return <div className="app-error-toast" role="alert">
+    <AlertCircle size={18} aria-hidden="true" />
+    <span>{message}</span>
+    <button type="button" onClick={onDismiss} aria-label="오류 메시지 닫기"><X size={16} /></button>
+  </div>
+}
+
 export default function App() {
   const path = window.location.pathname
-  const initialRoomCode = useMemo(() => decodeURIComponent(path.match(/^\/join\/([^/]+)/)?.[1] ?? ''), [path])
+  const isJoinRoute = useMemo(() => /^\/join(?:\/[^/]+)?$/.test(path), [path])
   const [party, setParty] = useState<PartyState | null>(null)
   const [session, setSession] = useState<Session | null>(null)
-  const [view, setView] = useState<'lobby' | 'join' | 'host' | 'guest'>(path === '/host' ? 'host' : initialRoomCode ? 'join' : 'lobby')
+  const [view, setView] = useState<'lobby' | 'join' | 'host' | 'guest'>(path === '/host' ? 'host' : isJoinRoute ? 'join' : 'lobby')
   const [message, setMessage] = useState('')
 
   useEffect(() => {
@@ -84,8 +91,8 @@ export default function App() {
     catch (error) { setMessage(error instanceof Error ? error.message : '방을 만들지 못했어요.') }
   }, [applyBootstrap])
 
-  const joinParty = useCallback(async (payload: JoinPayload) => {
-    try { applyBootstrap(await emitWithAck<BootstrapResponse>('party:join', payload)) }
+  const joinParty = useCallback(async (payload: Pick<JoinPayload, 'phone' | 'nickname'>) => {
+    try { applyBootstrap(await emitWithAck<BootstrapResponse>('party:join-default', payload)) }
     catch (error) { setMessage(error instanceof Error ? error.message : '입장하지 못했어요.') }
   }, [applyBootstrap])
 
@@ -98,13 +105,19 @@ export default function App() {
   }, [])
 
   const action = useCallback(async (event: string, payload: object = {}) => {
-    try { await emitWithAck(event, payload) }
-    catch (error) { setMessage(error instanceof Error ? error.message : '요청을 처리하지 못했어요.') }
+    try {
+      await emitWithAck(event, payload)
+      setMessage('')
+      return true
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '요청을 처리하지 못했어요.')
+      return false
+    }
   }, [])
 
-  if (view === 'host' && party) return <HostView party={party} session={session ?? undefined} now={Date.now()} onTriggerRally={() => action('host:rally')} onNextRound={() => action('host:round-next')} onUpdateSettings={(settings: Partial<PartySettings>) => action('host:settings', settings)} onCreateEvent={(title, reward) => action('host:event-create', { title, reward })} onRewardEvent={(eventId, userId) => action('host:event-reward', { eventId, userId })} onServeOrder={(orderId) => action('host:order-served', { orderId })} />
-  if (view === 'guest' && party && session) return <GuestView party={party} session={session} onInvest={(amount) => action('position:open', { userId: session.userId, amount })} onTopUp={(amount) => action('credit:topup', { userId: session.userId, amount })} onOrder={(productId, recipientId) => action('order:create', { userId: session.userId, productId, recipientId })} />
-  if (view === 'host') return <Lobby onHost={createParty} onJoin={() => setView('join')} />
-  if (view === 'join') return <><JoinCard initialRoomCode={initialRoomCode} onJoin={joinParty} />{message && <div className="join-card__error" role="alert">{message}</div>}</>
-  return <Lobby onHost={createParty} onJoin={() => setView('join')} />
+  if (view === 'host' && party) return <><HostView party={party} session={session ?? undefined} now={Date.now()} onTriggerRally={() => action('host:rally')} onNextRound={() => action('host:round-next')} onUpdateSettings={(settings: Partial<PartySettings>) => action('host:settings', settings)} onCreateEvent={(title, reward) => action('host:event-create', { title, reward })} onRewardEvent={(eventId, userId) => action('host:event-reward', { eventId, userId })} onServeOrder={(orderId) => action('host:order-served', { orderId })} /><AppErrorNotice message={message} onDismiss={() => setMessage('')} /></>
+  if (view === 'guest' && party && session) return <><GuestView party={party} session={session} onInvest={(amount) => action('position:open', { userId: session.userId, amount })} onAddPosition={(amount) => action('position:open', { userId: session.userId, amount })} onClosePosition={(amount) => action('position:close', { userId: session.userId, amount })} onTopUp={(amount) => action('credit:topup', { userId: session.userId, amount })} onOrder={(productId, recipientId) => action('order:create', { userId: session.userId, productId, recipientId })} /><AppErrorNotice message={message} onDismiss={() => setMessage('')} /></>
+  if (view === 'host') return <><Lobby onHost={createParty} onJoin={() => setView('join')} /><AppErrorNotice message={message} onDismiss={() => setMessage('')} /></>
+  if (view === 'join') return <><JoinCard onJoin={joinParty} /><AppErrorNotice message={message} onDismiss={() => setMessage('')} /></>
+  return <><Lobby onHost={createParty} onJoin={() => setView('join')} /><AppErrorNotice message={message} onDismiss={() => setMessage('')} /></>
 }

@@ -207,6 +207,7 @@ function registerSocket(socket: Socket) {
     const { room, user } = context
     const price = room.state.market.price
     const position = user.position
+    const isAdditionalBuy = Boolean(position)
     if (position) {
       const combined = position.amount + amount
       position.entryPrice = (position.entryPrice * position.amount + price * amount) / combined
@@ -216,7 +217,11 @@ function registerSocket(socket: Socket) {
     }
     user.credit -= amount
     refreshPnls(room)
-    room.state.notice = notice('event', '참여 완료', `${user.nickname}님이 ${amount} 크레딧을 참여했어요.`)
+    room.state.notice = notice(
+      'event',
+      isAdditionalBuy ? '추가 매수' : '매수 체결',
+      `${user.nickname}님이 ${amount} 크레딧을 담았어요.`,
+    )
     broadcast(room)
     ack?.({ ok: true, state: room.state })
   })
