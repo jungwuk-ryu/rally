@@ -36,6 +36,8 @@ const UPBIT_MINUTE_CANDLES_ENDPOINT = 'https://api.upbit.com/v1/candles/minutes/
 const UPBIT_TICKER_WEBSOCKET_ENDPOINT = 'wss://api.upbit.com/websocket/v1'
 const INITIAL_HISTORY_POINTS = 40
 const HOST_PASSWORD = process.env.HOST_PASSWORD?.trim() || '123456'
+const DEFAULT_ROOM_CODE = 'RALLY'
+const DEFAULT_HOST_NAME = 'Rally Host'
 
 const MARKET_POOL = [
   { symbol: 'KRW-BTC', name: '비트코인', fallbackPrice: 156_200_000 },
@@ -122,6 +124,11 @@ const io = new Server(httpServer, {
 
 if (process.env.RALLY_TEST_MODE !== '1') {
   io.on('connection', (socket) => registerSocket(socket))
+  void startRuntime()
+}
+
+async function startRuntime() {
+  await ensureDefaultRoom()
   connectUpbitTickerStream()
 
   setInterval(() => {
@@ -152,7 +159,19 @@ if (process.env.RALLY_TEST_MODE !== '1') {
 function registerSocket(socket: Socket) {
   socket.on('host:create', async (payload: { hostName?: unknown; settings?: Partial<PartySettings>; password?: unknown } = {}, ack?: (result: Ack) => void) => {
     if (!hasHostPassword(payload.password)) return fail(socket, ack, '호스트 비밀번호가 맞지 않아요.')
-    if (activeRoom() || isCreatingRoom) return fail(socket, ack, '이미 진행 중인 Rally 파티가 있어요. 손님으로 참여해 주세요.')
+    const current = activeRoom()
+    if (current) {
+      const session: Session = {
+        roomCode: current.state.roomCode,
+        userId: current.hostId,
+        phone: '',
+        nickname: current.state.hostName,
+        isHost: true,
+      }
+      attachSession(socket, session)
+      return ack?.({ ok: true, state: current.state, session })
+    }
+    if (isCreatingRoom) return fail(socket, ack, 'Rally 방을 준비하고 있어요. 잠시 후 다시 시도해 주세요.')
     const hostName = cleanName(payload.hostName, '오늘의 호스트')
     isCreatingRoom = true
     try {
@@ -411,7 +430,9 @@ function registerSocket(socket: Socket) {
 }
 
 async function createRoom(hostName: string, requestedSettings?: Partial<PartySettings>): Promise<Room> {
-  const roomCode = newRoomCode()
+  const roomCode = activeRoomCode === undefined && !rooms.has(DEFAULT_ROOM_CODE)
+    ? DEFAULT_ROOM_CODE
+    : newRoomCode()
   const now = Date.now()
   const selected = MARKET_POOL[randomInt(MARKET_POOL.length)]
   const market = await resolveInitialMarket(selected)
@@ -449,6 +470,18 @@ async function createRoom(hostName: string, requestedSettings?: Partial<PartySet
   void hydrateMarketHistory(room, market.symbol)
   void refreshMarket(room)
   return room
+}
+
+async function ensureDefaultRoom() {
+  const current = activeRoom()
+  if (current) return current
+
+  isCreatingRoom = true
+  try {
+    return await createRoom(DEFAULT_HOST_NAME)
+  } finally {
+    isCreatingRoom = false
+  }
 }
 
 function activeRoom() {

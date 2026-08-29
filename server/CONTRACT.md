@@ -6,7 +6,7 @@ Socket.IO는 현재 페이지와 같은 origin에서 연결한다. 모든 상태
 
 | Client event | Payload | 결과 |
 | --- | --- | --- |
-| `host:create` | `{ hostName, settings?, password }` | 비밀번호를 확인한 뒤, 활성 파티가 없을 때만 방을 만들고 callback으로 `{ ok, state, session }` 반환 |
+| `host:create` | `{ hostName, settings?, password }` | 비밀번호를 확인한 뒤, 항상 열려 있는 Rally 기본 방의 호스트 화면으로 연결하고 callback으로 `{ ok, state, session }` 반환 |
 | `host:resume` | `{ roomCode, userId, password }` | 비밀번호를 확인한 뒤 호스트 화면 새로고침 세션 복구 |
 | `host:join-active` | `{ password }` | 비밀번호를 확인한 뒤 현재 활성 파티에 호스트 미러 화면으로 연결. 같은 상태와 설정 제어 권한을 받음 |
 | `party:join` | `{ roomCode, phone, nickname }` | 전화번호가 같은 손님이면 기존 크레딧과 포지션을 복구 |
@@ -15,7 +15,7 @@ Socket.IO는 현재 페이지와 같은 origin에서 연결한다. 모든 상태
 
 `Session`은 `roomCode`, `userId`, `phone`, `nickname`, `isHost`를 가진다. 손님이 받은 `userId`는 아래 본인 액션의 payload에 넣는다.
 
-동시에 활성화할 수 있는 파티는 하나다. 이미 파티가 열려 있을 때 `host:create`는 `이미 진행 중인 Rally 파티가 있어요. 손님으로 참여해 주세요.` 오류를 반환한다. 기존 QR은 `party:join`을 계속 사용한다.
+동시에 활성화할 수 있는 파티는 하나다. 서버가 시작되면 고정 코드 `RALLY`의 기본 방을 먼저 만들고, 호스트·손님이 즉시 연결할 수 있다. `host:create`는 새 방을 만들지 않고 이 기본 방의 호스트 화면으로 연결한다. 기존 QR은 `party:join`을 계속 사용한다.
 
 ## 손님 액션
 
