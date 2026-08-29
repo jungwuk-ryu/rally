@@ -40,7 +40,7 @@ export interface HostViewProps {
   onServeOrder?: (orderId: string) => void
 }
 
-const avatarPalette = ['#e9e2d4', '#f4b49d', '#c6d9c8', '#e9b96b', '#d9d3c6', '#e77e61']
+const avatarPalette = ['#d2a8ff', '#8ab4ff', '#ffb8cd', '#7be6bc', '#ffcb82', '#b9b1ff']
 
 type AudioMode = 'idle' | 'requesting' | 'listening' | 'fallback'
 type ImpactKind = 'buy' | 'add' | 'sell' | 'surge' | 'drop'
@@ -510,17 +510,17 @@ export function HostView({
             <AreaChart data={chartData} margin={{ top: 24, right: 2, bottom: 2, left: 2 }}>
               <defs>
                 <linearGradient id="rally-chart-fill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={signal === 'up' ? '#ea2804' : '#bd3a2d'} stopOpacity={0.32} />
-                  <stop offset="100%" stopColor={signal === 'up' ? '#f0ede5' : '#e6d9d5'} stopOpacity={0} />
+                  <stop offset="0%" stopColor={signal === 'up' ? '#d2a8ff' : '#ff90aa'} stopOpacity={0.26} />
+                  <stop offset="100%" stopColor={signal === 'up' ? '#8f6cff' : '#ff607b'} stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid stroke="rgba(252, 252, 252, 0.15)" strokeDasharray="2 8" vertical={false} />
+              <CartesianGrid stroke="rgba(255, 240, 255, 0.12)" strokeDasharray="2 8" vertical={false} />
               <XAxis dataKey="index" type="number" hide />
               <YAxis domain={chartRange.domain} hide />
               <Area
                 type="monotone"
                 dataKey="value"
-                stroke={signal === 'up' ? '#ea2804' : '#dd796b'}
+                stroke={signal === 'up' ? '#d7b4ff' : '#ff9aae'}
                 strokeWidth={1.7}
                 fill="url(#rally-chart-fill)"
                 isAnimationActive={!reduceMotion}
@@ -533,8 +533,8 @@ export function HostView({
                   x={currentChartPoint.index}
                   y={currentChartPoint.value}
                   r={4.5}
-                  fill="#fcfcfc"
-                  stroke={signal === 'up' ? '#ea2804' : '#bd3a2d'}
+                  fill={signal === 'up' ? '#dfffee' : '#ffe4eb'}
+                  stroke={signal === 'up' ? '#6ee9ba' : '#ff99ae'}
                   strokeWidth={2}
                   isFront
                 />
@@ -592,8 +592,8 @@ export function HostView({
           size={76}
           level="M"
           includeMargin={false}
-          bgColor="#f9f7f3"
-          fgColor="#202020"
+          bgColor="#fbf8ff"
+          fgColor="#120c15"
           className="rally-host__qr"
         />
         <div className="rally-host__join-copy">
