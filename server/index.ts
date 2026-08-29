@@ -28,6 +28,7 @@ const PRICE_POLL_INTERVAL_MS = 3_000
 const ROUND_CHECK_INTERVAL_MS = 1_000
 const MAX_PRICE_HISTORY = 72
 const RALLY_DURATION_MS = 8_000
+const UPBIT_TICKER_ENDPOINT = 'https://api.upbit.com/v1/ticker'
 
 const MARKET_POOL = [
   { symbol: 'KRW-BTC', name: '비트코인', fallbackPrice: 156_200_000 },
@@ -78,6 +79,7 @@ interface Ack {
 
 const rooms = new Map<string, Room>()
 const sessions = new Map<string, Session>()
+let activeRoomCode: string | undefined
 
 const app = express()
 app.disable('x-powered-by')
@@ -113,7 +115,7 @@ setInterval(() => {
       room.state.rallyActiveUntil = undefined
       broadcast(room)
     }
-    if (now - room.state.roundStartedAt >= room.state.settings.roundSeconds * 1_000) {
+    if (room.state.settings.autoRoundEnabled && now - room.state.roundStartedAt >= room.state.settings.roundSeconds * 1_000) {
       finishRound(room, false)
     }
   }
@@ -129,6 +131,7 @@ httpServer.listen(PORT, '0.0.0.0', () => {
 
 function registerSocket(socket: Socket) {
   socket.on('host:create', (payload: { hostName?: unknown; settings?: Partial<PartySettings> } = {}, ack?: (result: Ack) => void) => {
+    if (activeRoom()) return fail(socket, ack, '이미 진행 중인 Rally 파티가 있어요. 손님으로 참여해 주세요.')
     const hostName = cleanName(payload.hostName, '오늘의 호스트')
     const room = createRoom(hostName, payload.settings)
     const session: Session = {
@@ -175,34 +178,13 @@ function registerSocket(socket: Socket) {
       return ack?.({ ok: true, state: room.state, session })
     }
 
-    const phone = normalizePhone(payload?.phone)
-    const nickname = cleanName(payload?.nickname, '')
-    if (!phone || !nickname) return fail(socket, ack, '전화번호와 닉네임을 확인해 주세요.')
+    joinGuest(socket, room, payload, ack)
+  })
 
-    let userId = room.userIdByPhone.get(phone)
-    let user = userId ? findUser(room, userId) : undefined
-    if (!user) {
-      userId = `guest_${randomUUID()}`
-      user = {
-        id: userId,
-        phone: '비공개',
-        nickname,
-        credit: 200,
-        pnl: 0,
-        joinedAt: Date.now(),
-      }
-      room.userIdByPhone.set(phone, user.id)
-      room.state.users.push(user)
-      announceMc(room, 'roundStart')
-    } else {
-      user.nickname = nickname
-    }
-
-    const session: Session = { roomCode: room.state.roomCode, userId: user.id, phone, nickname: user.nickname, isHost: false }
-    attachSession(socket, session)
-    room.state.notice = notice('event', '새 참가자', `${user.nickname}님이 함께해요.`)
-    broadcast(room)
-    ack?.({ ok: true, state: room.state, session })
+  socket.on('party:join-default', (payload: Omit<JoinPayload, 'roomCode'>, ack?: (result: Ack) => void) => {
+    const room = activeRoom()
+    if (!room) return fail(socket, ack, '아직 열린 Rally 파티가 없어요.')
+    joinGuest(socket, room, payload, ack)
   })
 
   socket.on('party:resume', (payload: Pick<JoinPayload, 'roomCode' | 'phone'>, ack?: (result: Ack) => void) => {
@@ -237,6 +219,10 @@ function registerSocket(socket: Socket) {
     room.state.notice = notice('event', '참여 완료', `${user.nickname}님이 ${amount} 크레딧을 참여했어요.`)
     broadcast(room)
     ack?.({ ok: true, state: room.state })
+  })
+
+  socket.on('position:close', (payload: { userId?: unknown; amount?: unknown; closeAll?: unknown }, ack?: (result: Ack) => void) => {
+    closePosition(socket, payload, ack)
   })
 
   socket.on('credit:topup', (payload: { userId?: unknown; amount?: unknown }, ack?: (result: Ack) => void) => {
@@ -313,8 +299,16 @@ function registerSocket(socket: Socket) {
   socket.on('host:settings', (payload: Partial<PartySettings>, ack?: (result: Ack) => void) => {
     const room = getHostRoom(socket)
     if (!room) return fail(socket, ack, '호스트 세션을 확인해 주세요.')
+    const wasAutoRoundEnabled = room.state.settings.autoRoundEnabled
     room.state.settings = mergeSettings(room.state.settings, payload)
-    room.state.notice = notice('event', '라운드 설정 변경', `${room.state.settings.roundSeconds}초 라운드로 진행해요.`)
+    if (!wasAutoRoundEnabled && room.state.settings.autoRoundEnabled) room.state.roundStartedAt = Date.now()
+    room.state.notice = notice(
+      'event',
+      '라운드 설정 변경',
+      room.state.settings.autoRoundEnabled
+        ? `${room.state.settings.roundSeconds}초마다 다음 종목으로 넘어가요.`
+        : '자동 종목 전환을 껐어요.',
+    )
     broadcast(room)
     ack?.({ ok: true, state: room.state })
   })
@@ -397,8 +391,46 @@ function createRoom(hostName: string, requestedSettings?: Partial<PartySettings>
     },
   }
   rooms.set(roomCode, room)
+  activeRoomCode = roomCode
   void refreshMarket(room)
   return room
+}
+
+function activeRoom() {
+  const room = activeRoomCode ? rooms.get(activeRoomCode) : undefined
+  if (!room) activeRoomCode = undefined
+  return room
+}
+
+function joinGuest(socket: Socket, room: Room, payload: Omit<JoinPayload, 'roomCode'>, ack?: (result: Ack) => void) {
+  const phone = normalizePhone(payload?.phone)
+  const nickname = cleanName(payload?.nickname, '')
+  if (!phone || !nickname) return fail(socket, ack, '전화번호와 닉네임을 확인해 주세요.')
+
+  let userId = room.userIdByPhone.get(phone)
+  let user = userId ? findUser(room, userId) : undefined
+  if (!user) {
+    userId = `guest_${randomUUID()}`
+    user = {
+      id: userId,
+      phone: '비공개',
+      nickname,
+      credit: 200,
+      pnl: 0,
+      joinedAt: Date.now(),
+    }
+    room.userIdByPhone.set(phone, user.id)
+    room.state.users.push(user)
+    announceMc(room, 'roundStart')
+  } else {
+    user.nickname = nickname
+  }
+
+  const session: Session = { roomCode: room.state.roomCode, userId: user.id, phone, nickname: user.nickname, isHost: false }
+  attachSession(socket, session)
+  room.state.notice = notice('event', '새 참가자', `${user.nickname}님이 함께해요.`)
+  broadcast(room)
+  ack?.({ ok: true, state: room.state, session })
 }
 
 function attachSession(socket: Socket, session: Session) {
@@ -423,6 +455,44 @@ function getGuestContext(socket: Socket, requestedUserId: unknown): { room: Room
   return room && user ? { room, user } : undefined
 }
 
+function closePosition(
+  socket: Socket,
+  payload: { userId?: unknown; amount?: unknown; closeAll?: unknown },
+  ack?: (result: Ack) => void,
+) {
+  const context = getGuestContext(socket, payload?.userId)
+  if (!context) return fail(socket, ack, '참가자 세션을 확인해 주세요.')
+  const position = context.user.position
+  if (!position) return fail(socket, ack, '정산할 포지션이 없어요.')
+
+  const closeAll = payload.closeAll === true || payload.amount === undefined
+  const amount = closeAll ? position.amount : wholeNumber(payload.amount, 1, position.amount)
+  if (!amount) return fail(socket, ack, '정산할 크레딧을 확인해 주세요.')
+
+  const settlement = Math.max(0, Math.round(amount * (context.room.state.market.price / position.entryPrice)))
+  const profit = settlement - amount
+  const isFullClose = amount === position.amount
+  context.user.credit += settlement
+  if (isFullClose) {
+    context.user.position = undefined
+    context.user.pnl = 0
+  } else {
+    position.amount -= amount
+    refreshPnls(context.room)
+  }
+
+  const item = notice(
+    'settlement',
+    isFullClose ? '포지션 정산' : '일부 정산',
+    `${amount} 크레딧 매도 · 정산 ${settlement} 크레딧 (${profit >= 0 ? '+' : ''}${profit})`,
+    context.user.id,
+  )
+  context.room.state.notice = item
+  emitNoticeToUser(context.room, context.user.id, item)
+  broadcast(context.room)
+  ack?.({ ok: true, state: context.room.state })
+}
+
 function findUser(room: Room | undefined, userId: string | undefined) {
   return userId ? room?.state.users.find((user) => user.id === userId) : undefined
 }
@@ -435,7 +505,7 @@ function finishRound(room: Room, forcedByHost: boolean) {
       const settlement = Math.max(0, Math.round(position.amount * (room.state.market.price / position.entryPrice)))
       const profit = settlement - position.amount
       user.credit += settlement
-      user.pnl = profit
+      user.pnl = 0
       user.position = undefined
       const personalNotice = notice('settlement', '라운드 정산', `${profit >= 0 ? '+' : ''}${profit} 크레딧 · 정산 ${settlement} 크레딧`, user.id)
       emitNoticeToUser(room, user.id, personalNotice)
@@ -469,7 +539,7 @@ async function pollMarkets() {
 async function refreshMarket(room: Room) {
   const market = room.state.market
   try {
-    const response = await fetch(`https://api.upbit.com/v1/ticker?markets=${encodeURIComponent(market.symbol)}`, {
+    const response = await fetch(`${UPBIT_TICKER_ENDPOINT}?markets=${encodeURIComponent(market.symbol)}`, {
       headers: { Accept: 'application/json' },
       signal: AbortSignal.timeout(2_400),
     })
@@ -575,13 +645,14 @@ function fallbackTick(currentPrice: number) {
 function mergeSettings(current: PartySettings, patch?: Partial<PartySettings>): PartySettings {
   return {
     roundSeconds: wholeNumber(patch?.roundSeconds, 20, 3_600) ?? current.roundSeconds,
+    autoRoundEnabled: typeof patch?.autoRoundEnabled === 'boolean' ? patch.autoRoundEnabled : current.autoRoundEnabled,
     rallyThreshold: wholeNumber(patch?.rallyThreshold, 10, 50_000) ?? current.rallyThreshold,
     rallyCooldownSeconds: wholeNumber(patch?.rallyCooldownSeconds, 8, 1_800) ?? current.rallyCooldownSeconds,
   }
 }
 
 function defaultSettings(): PartySettings {
-  return { roundSeconds: 600, rallyThreshold: 300, rallyCooldownSeconds: 75 }
+  return { roundSeconds: 600, autoRoundEnabled: false, rallyThreshold: 300, rallyCooldownSeconds: 75 }
 }
 
 function newRoomCode() {

@@ -55,6 +55,7 @@ export interface PartyOrder {
 
 export interface PartySettings {
   roundSeconds: number
+  autoRoundEnabled: boolean
   rallyThreshold: number
   rallyCooldownSeconds: number
 }
