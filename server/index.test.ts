@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { Market } from '../src/types.js'
-import { parseUpbitTicker, pollMarketPrice } from './index.js'
+import { fetchUpbitTickerPrice, marketFromActualPrice, parseUpbitTicker, pollMarketPrice } from './index.js'
 
 test('ticker failures preserve the last actual price and chart history', async () => {
   const market: Market = {
@@ -29,4 +29,14 @@ test('Upbit SIMPLE ticker messages expose the subscribed symbol and price', () =
     parseUpbitTicker(JSON.stringify({ ty: 'ticker', cd: 'KRW-BTC', tp: 123_456_000 })),
     { symbol: 'KRW-BTC', price: 123_456_000 },
   )
+})
+
+test('a cached or primed actual price seeds the market without a hardcoded DEMO jump', async () => {
+  const primed = await fetchUpbitTickerPrice('KRW-BTC', async () => new Response(JSON.stringify([{ trade_price: 107_740_000 }]), { status: 200 }))
+  const market = marketFromActualPrice('KRW-BTC', '비트코인', primed ?? 0)
+
+  assert.equal(primed, 107_740_000)
+  assert.equal(market.price, 107_740_000)
+  assert.equal(market.source, 'upbit')
+  assert.deepEqual(market.history, Array.from({ length: 40 }, () => 107_740_000))
 })

@@ -74,6 +74,7 @@ interface Room {
   userIdByPhone: Map<string, string>
   lastMcAt: number
   mcPending: boolean
+  isTransitioning: boolean
   state: PartyState
 }
 
@@ -91,6 +92,8 @@ let upbitTickerSocket: WebSocket | undefined
 let upbitReconnectTimer: ReturnType<typeof setTimeout> | undefined
 let upbitReconnectDelayMs = 500
 let lastUpbitStreamMessageAt = 0
+let isCreatingRoom = false
+const latestUpbitPrices = new Map<string, number>()
 
 const app = express()
 app.disable('x-powered-by')
@@ -147,21 +150,26 @@ if (process.env.RALLY_TEST_MODE !== '1') {
 }
 
 function registerSocket(socket: Socket) {
-  socket.on('host:create', (payload: { hostName?: unknown; settings?: Partial<PartySettings>; password?: unknown } = {}, ack?: (result: Ack) => void) => {
+  socket.on('host:create', async (payload: { hostName?: unknown; settings?: Partial<PartySettings>; password?: unknown } = {}, ack?: (result: Ack) => void) => {
     if (!hasHostPassword(payload.password)) return fail(socket, ack, '호스트 비밀번호가 맞지 않아요.')
-    if (activeRoom()) return fail(socket, ack, '이미 진행 중인 Rally 파티가 있어요. 손님으로 참여해 주세요.')
+    if (activeRoom() || isCreatingRoom) return fail(socket, ack, '이미 진행 중인 Rally 파티가 있어요. 손님으로 참여해 주세요.')
     const hostName = cleanName(payload.hostName, '오늘의 호스트')
-    const room = createRoom(hostName, payload.settings)
-    const session: Session = {
-      roomCode: room.state.roomCode,
-      userId: room.hostId,
-      phone: '',
-      nickname: hostName,
-      isHost: true,
+    isCreatingRoom = true
+    try {
+      const room = await createRoom(hostName, payload.settings)
+      const session: Session = {
+        roomCode: room.state.roomCode,
+        userId: room.hostId,
+        phone: '',
+        nickname: hostName,
+        isHost: true,
+      }
+      attachSession(socket, session)
+      io.to(room.state.roomCode).emit('party:notice', room.state.notice)
+      ack?.({ ok: true, state: room.state, session })
+    } finally {
+      isCreatingRoom = false
     }
-    attachSession(socket, session)
-    io.to(room.state.roomCode).emit('party:notice', room.state.notice)
-    ack?.({ ok: true, state: room.state, session })
   })
 
   socket.on('host:resume', (payload: { roomCode?: unknown; userId?: unknown; password?: unknown }, ack?: (result: Ack) => void) => {
@@ -333,11 +341,11 @@ function registerSocket(socket: Socket) {
     ack?.({ ok: true, state: room.state })
   })
 
-  socket.on('host:round-next', (payloadOrAck?: unknown, possibleAck?: (result: Ack) => void) => {
+  socket.on('host:round-next', async (payloadOrAck?: unknown, possibleAck?: (result: Ack) => void) => {
     const ack = callbackFrom(payloadOrAck, possibleAck)
     const room = getHostRoom(socket)
     if (!room) return fail(socket, ack, '호스트 세션을 확인해 주세요.')
-    finishRound(room, true)
+    await finishRound(room, true)
     ack?.({ ok: true, state: room.state })
   })
 
@@ -402,16 +410,17 @@ function registerSocket(socket: Socket) {
   socket.on('disconnect', () => sessions.delete(socket.id))
 }
 
-function createRoom(hostName: string, requestedSettings?: Partial<PartySettings>): Room {
+async function createRoom(hostName: string, requestedSettings?: Partial<PartySettings>): Promise<Room> {
   const roomCode = newRoomCode()
   const now = Date.now()
   const selected = MARKET_POOL[randomInt(MARKET_POOL.length)]
-  const market = fallbackMarket(selected.symbol, selected.name, selected.fallbackPrice)
+  const market = await resolveInitialMarket(selected)
   const room: Room = {
     hostId: `host_${randomUUID()}`,
     userIdByPhone: new Map(),
     lastMcAt: 0,
     mcPending: false,
+    isTransitioning: false,
     state: {
       roomCode,
       createdAt: now,
@@ -543,7 +552,10 @@ function findUser(room: Room | undefined, userId: string | undefined) {
   return userId ? room?.state.users.find((user) => user.id === userId) : undefined
 }
 
-function finishRound(room: Room, forcedByHost: boolean) {
+async function finishRound(room: Room, forcedByHost: boolean) {
+  if (room.isTransitioning) return
+  room.isTransitioning = true
+  try {
   const settled = room.state.users
     .filter((user) => user.position)
     .map((user) => {
@@ -559,7 +571,7 @@ function finishRound(room: Room, forcedByHost: boolean) {
     })
 
   const previousName = room.state.market.name
-  chooseNextMarket(room)
+  await chooseNextMarket(room)
   room.state.round += 1
   room.state.roundStartedAt = Date.now()
   room.state.rallyActiveUntil = undefined
@@ -569,13 +581,16 @@ function finishRound(room: Room, forcedByHost: boolean) {
   announceMc(room, 'roundEnd')
   broadcast(room)
   void refreshMarket(room)
+  } finally {
+    room.isTransitioning = false
+  }
 }
 
-function chooseNextMarket(room: Room) {
+async function chooseNextMarket(room: Room) {
   const previousSymbol = room.state.market.symbol
   const candidates = MARKET_POOL.filter((market) => market.symbol !== previousSymbol)
   const selected = candidates[randomInt(candidates.length)]
-  room.state.market = fallbackMarket(selected.symbol, selected.name, selected.fallbackPrice)
+  room.state.market = await resolveInitialMarket(selected)
   void hydrateMarketHistory(room, selected.symbol)
 }
 
@@ -642,6 +657,7 @@ function consumeUpbitTickerMessage(data: RawData) {
   const ticker = parseUpbitTicker(data)
   if (!ticker) return
   lastUpbitStreamMessageAt = Date.now()
+  latestUpbitPrices.set(ticker.symbol, ticker.price)
 
   for (const room of rooms.values()) {
     if (room.state.market.symbol !== ticker.symbol) continue
@@ -674,18 +690,28 @@ function upbitMessageText(data: RawData | string) {
 
 export async function pollMarketPrice(market: Market, request: typeof fetch = fetch) {
   try {
-    const response = await request(`${UPBIT_TICKER_ENDPOINT}?markets=${encodeURIComponent(market.symbol)}`, {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(2_400),
-    })
-    if (!response.ok) throw new Error('upbit response unavailable')
-    const payload = (await response.json()) as Array<{ trade_price?: unknown }>
-    const price = Number(payload[0]?.trade_price)
-    if (!Number.isFinite(price) || price <= 0) throw new Error('upbit ticker malformed')
+    const price = await fetchUpbitTickerPrice(market.symbol, request)
+    if (price === undefined) return false
+    latestUpbitPrices.set(market.symbol, price)
     applyMarketPrice(market, price, 'upbit')
     return true
   } catch {
     return false
+  }
+}
+
+export async function fetchUpbitTickerPrice(symbol: string, request: typeof fetch = fetch) {
+  try {
+    const response = await request(`${UPBIT_TICKER_ENDPOINT}?markets=${encodeURIComponent(symbol)}`, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(2_400),
+    })
+    if (!response.ok) return undefined
+    const payload = (await response.json()) as Array<{ trade_price?: unknown }>
+    const price = Number(payload[0]?.trade_price)
+    return Number.isFinite(price) && price > 0 ? roundPrice(price) : undefined
+  } catch {
+    return undefined
   }
 }
 
@@ -804,6 +830,31 @@ function fallbackMarket(symbol: string, name: string, fallbackPrice: number): Ma
     history: Array.from({ length: INITIAL_HISTORY_POINTS }, () => initial),
     source: 'fallback',
   }
+}
+
+export function marketFromActualPrice(symbol: string, name: string, price: number): Market {
+  const actual = roundPrice(price)
+  return {
+    symbol,
+    name,
+    price: actual,
+    previousPrice: actual,
+    changeRate: 0,
+    history: Array.from({ length: INITIAL_HISTORY_POINTS }, () => actual),
+    source: 'upbit',
+  }
+}
+
+async function resolveInitialMarket(selection: typeof MARKET_POOL[number]) {
+  const cachedPrice = latestUpbitPrices.get(selection.symbol)
+  if (cachedPrice !== undefined) return marketFromActualPrice(selection.symbol, selection.name, cachedPrice)
+
+  const primedPrice = await fetchUpbitTickerPrice(selection.symbol)
+  if (primedPrice !== undefined) {
+    latestUpbitPrices.set(selection.symbol, primedPrice)
+    return marketFromActualPrice(selection.symbol, selection.name, primedPrice)
+  }
+  return fallbackMarket(selection.symbol, selection.name, selection.fallbackPrice)
 }
 
 function mergeSettings(current: PartySettings, patch?: Partial<PartySettings>): PartySettings {

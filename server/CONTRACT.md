@@ -49,7 +49,7 @@ Socket.IO는 현재 페이지와 같은 origin에서 연결한다. 모든 상태
 | `party:notice` | `PartyNotice` | 해당 손님에게만 보내는 선물·정산·서빙 팝업. 전역 공지는 `party:state.notice`에도 포함 |
 | `party:error` | `string` | 액션 실패 문구 |
 
-새 파티와 새 종목은 업비트 공개 1분 캔들의 최근 약 40개 종가를 `PartyState.market.history`에 먼저 채운다. 서버는 `wss://api.upbit.com/websocket/v1`에 ticker를 한 번 연결하고 코인 풀을 함께 구독한다. 활성 라운드 종목의 ticker 메시지는 즉시 같은 `PartyState`로 broadcast한다. WebSocket이 끊기거나 15초 넘게 멈추면 REST ticker를 15초 간격으로 보조 복구한다. ticker가 잠시 실패하면 마지막 실제 가격과 이력을 그대로 유지한다. 아직 공개 데이터를 받지 못한 상태는 평평한 DEMO 이력을 유지한다. `PartyState.market.source`가 `upbit`면 업비트 공개 데이터를 받고 있는 상태이며, `fallback`이면 UI는 `DEMO`로 표시한다. `PartyState.rallyActiveUntil`이 현재 시각보다 미래면 Rally Moment 연출을 보여준다.
+새 파티와 새 종목은 WebSocket 최신가 cache를 먼저 사용한다. cache가 없으면 방 생성 응답과 다음 라운드 전환 전에 단일 REST ticker prime을 제한 시간만큼 기다린다. 실제 가격을 확보하면 그 가격을 이력 꼬리로 즉시 사용하고, 이후 업비트 공개 1분 캔들의 최근 약 40개 종가를 `PartyState.market.history`에 채운다. 서버는 `wss://api.upbit.com/websocket/v1`에 ticker를 한 번 연결하고 코인 풀을 함께 구독한다. 활성 라운드 종목의 ticker 메시지는 즉시 같은 `PartyState`로 broadcast한다. WebSocket이 끊기거나 15초 넘게 멈추면 REST ticker를 15초 간격으로 보조 복구한다. ticker가 잠시 실패하면 마지막 실제 가격과 이력을 그대로 유지한다. 아직 공개 데이터를 받지 못한 상태는 평평한 DEMO 이력을 유지한다. `PartyState.market.source`가 `upbit`면 업비트 공개 데이터를 받고 있는 상태이며, `fallback`이면 UI는 `DEMO`로 표시한다. `PartyState.rallyActiveUntil`이 현재 시각보다 미래면 Rally Moment 연출을 보여준다.
 
 `PartySettings.autoRoundEnabled`의 기본값은 `false`다. 켜면 기본 600초를 기준으로 포지션을 정산하고 직전 종목을 제외한 다음 종목으로 자동 전환한다. 꺼진 상태에서는 호스트의 `host:round-next`만 라운드를 넘긴다.
 
