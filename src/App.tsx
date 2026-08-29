@@ -33,49 +33,12 @@ function Lobby({ onHost, onJoin }: { onHost: () => void; onJoin: () => void }) {
   </main>
 }
 
-function HostAccessCard({
-  intent,
-  onAccess,
-  onBack,
-}: {
-  intent: 'create' | 'mirror'
-  onAccess: (password: string) => Promise<string | null>
-  onBack: () => void
-}) {
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [pending, setPending] = useState(false)
-  const isCreate = intent === 'create'
-
+function HostConnectingCard({ onBack }: { onBack: () => void }) {
   return <main className="join-card host-access-card">
     <div className="lobby__mark" style={{ color: '#11152c', fontSize: 42 }}>Rally</div>
-    <h1>{isCreate ? '호스트로 시작하기' : '호스트 화면 연결'}</h1>
-    <p>{isCreate ? '파티를 열거나 진행 중인 화면에 연결해요.' : '진행 중인 Rally 호스트 화면에 연결해요.'}</p>
-    <form onSubmit={async (event) => {
-      event.preventDefault()
-      if (!password.trim()) return setError('호스트 비밀번호를 입력해 주세요.')
-      setError('')
-      setPending(true)
-      const accessError = await onAccess(password)
-      setPending(false)
-      if (accessError) setError(accessError)
-    }}>
-      <label>호스트 비밀번호
-        <input
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          type="password"
-          inputMode="numeric"
-          autoComplete="current-password"
-          placeholder="6자리 비밀번호"
-          maxLength={24}
-          autoFocus
-        />
-      </label>
-      {error && <p className="join-card__error">{error}</p>}
-      <button type="submit" disabled={pending}>{pending ? '연결 중' : isCreate ? '호스트 화면 열기' : '호스트 화면 연결'}</button>
-      <button className="host-access-card__back" type="button" onClick={onBack}>돌아가기</button>
-    </form>
+    <h1>호스트 화면 연결 중</h1>
+    <p>진행 중인 파티에 바로 연결하고 있어요.</p>
+    <button className="host-access-card__back" type="button" onClick={onBack}>돌아가기</button>
   </main>
 }
 
@@ -137,20 +100,20 @@ export default function App() {
     setView(bootstrap.session.isHost ? 'host' : 'guest')
   }, [])
 
-  const enterHost = useCallback(async (password: string) => {
+  const enterHost = useCallback(async () => {
     try {
       let bootstrap: BootstrapResponse
       if (hostIntent === 'create') {
         try {
-          bootstrap = await emitWithAck<BootstrapResponse>('host:create', { hostName: 'Rally Host', password })
+          bootstrap = await emitWithAck<BootstrapResponse>('host:create', { hostName: 'Rally Host' })
         } catch {
-          bootstrap = await emitWithAck<BootstrapResponse>('host:join-active', { password })
+          bootstrap = await emitWithAck<BootstrapResponse>('host:join-active', {})
         }
       } else {
         const stored = readStoredSession()
         bootstrap = stored?.isHost
-          ? await emitWithAck<BootstrapResponse>('host:resume', { roomCode: stored.roomCode, userId: stored.userId, password })
-          : await emitWithAck<BootstrapResponse>('host:join-active', { password })
+          ? await emitWithAck<BootstrapResponse>('host:resume', { roomCode: stored.roomCode, userId: stored.userId })
+          : await emitWithAck<BootstrapResponse>('host:join-active', {})
       }
       applyBootstrap(bootstrap)
       return null
@@ -170,6 +133,11 @@ export default function App() {
     try { applyBootstrap(await emitWithAck<BootstrapResponse>('party:join-default', payload)) }
     catch (error) { setMessage(error instanceof Error ? error.message : '입장하지 못했어요.') }
   }, [applyBootstrap])
+
+  useEffect(() => {
+    if (view !== 'host' || party) return
+    void enterHost()
+  }, [enterHost, party, view])
 
   useEffect(() => {
     const stored = readStoredSession()
@@ -195,7 +163,7 @@ export default function App() {
 
   if (view === 'host' && party) return <><HostView party={party} session={session ?? undefined} now={Date.now()} onTriggerRally={() => action('host:rally')} onNextRound={() => action('host:round-next')} onUpdateSettings={(settings: Partial<PartySettings>) => action('host:settings', settings)} onCreateEvent={(title, reward) => action('host:event-create', { title, reward })} onRewardEvent={(eventId, userId) => action('host:event-reward', { eventId, userId })} onServeOrder={(orderId) => action('host:order-served', { orderId })} /><AppErrorNotice message={message} onDismiss={() => setMessage('')} /></>
   if (view === 'guest' && party && session) return <><GuestView party={party} session={session} onInvest={(amount) => action('position:open', { userId: session.userId, amount })} onAddPosition={(amount) => action('position:open', { userId: session.userId, amount })} onClosePosition={(amount) => action('position:close', { userId: session.userId, amount })} onTopUp={(amount) => action('credit:topup', { userId: session.userId, amount })} onOrder={(productId, recipientId) => action('order:create', { userId: session.userId, productId, recipientId })} /><AppErrorNotice message={message} onDismiss={() => setMessage('')} /></>
-  if (view === 'host') return <><HostAccessCard intent={hostIntent} onAccess={enterHost} onBack={() => setView('lobby')} /><AppErrorNotice message={message} onDismiss={() => setMessage('')} /></>
+  if (view === 'host') return <><HostConnectingCard onBack={() => setView('lobby')} /><AppErrorNotice message={message} onDismiss={() => setMessage('')} /></>
   if (view === 'join') return <><JoinCard onJoin={joinParty} /><AppErrorNotice message={message} onDismiss={() => setMessage('')} /></>
   return <><Lobby onHost={openHost} onJoin={() => setView('join')} /><AppErrorNotice message={message} onDismiss={() => setMessage('')} /></>
 }

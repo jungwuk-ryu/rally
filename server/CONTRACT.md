@@ -6,9 +6,9 @@ Socket.IO는 현재 페이지와 같은 origin에서 연결한다. 모든 상태
 
 | Client event | Payload | 결과 |
 | --- | --- | --- |
-| `host:create` | `{ hostName, settings?, password }` | 비밀번호를 확인한 뒤, 항상 열려 있는 Rally 기본 방의 호스트 화면으로 연결하고 callback으로 `{ ok, state, session }` 반환 |
-| `host:resume` | `{ roomCode, userId, password }` | 비밀번호를 확인한 뒤 호스트 화면 새로고침 세션 복구 |
-| `host:join-active` | `{ password }` | 비밀번호를 확인한 뒤 현재 활성 파티에 호스트 미러 화면으로 연결. 같은 상태와 설정 제어 권한을 받음 |
+| `host:create` | `{ hostName, settings? }` | 항상 열려 있는 Rally 기본 방의 호스트 화면으로 연결하고 callback으로 `{ ok, state, session }` 반환 |
+| `host:resume` | `{ roomCode, userId }` | 호스트 화면 새로고침 세션 복구 |
+| `host:join-active` | 없음 | 현재 활성 파티에 호스트 미러 화면으로 연결. 같은 상태와 설정 제어 권한을 받음 |
 | `party:join` | `{ roomCode, phone, nickname }` | 전화번호가 같은 손님이면 기존 크레딧과 포지션을 복구 |
 | `party:join-default` | `{ phone, nickname }` | 현재 열려 있는 단일 파티에 방 코드 없이 입장 |
 | `party:resume` | `{ roomCode, phone }` | 화면 새로고침 뒤 기존 손님 세션 복구 |
@@ -39,7 +39,7 @@ Socket.IO는 현재 페이지와 같은 origin에서 연결한다. 모든 상태
 | `host:event-reward` | `{ eventId, userId }` | 선택 손님에게 한 번만 미션 보상 지급 |
 | `host:order-served` | `{ orderId }` | 주문 서빙 완료 처리 |
 
-호스트 비밀번호의 기본값은 `123456`이며 서버 환경변수 `HOST_PASSWORD`로 바꿀 수 있다. 호스트 이벤트는 방을 만든 socket 세션 또는 `host:join-active`로 연결한 호스트 미러 세션만 실행할 수 있다.
+호스트 이벤트는 방을 만든 socket 세션 또는 `host:join-active`로 연결한 호스트 미러 세션만 실행할 수 있다.
 
 ## Server event
 

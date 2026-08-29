@@ -35,7 +35,6 @@ const UPBIT_TICKER_ENDPOINT = 'https://api.upbit.com/v1/ticker'
 const UPBIT_MINUTE_CANDLES_ENDPOINT = 'https://api.upbit.com/v1/candles/minutes/1'
 const UPBIT_TICKER_WEBSOCKET_ENDPOINT = 'wss://api.upbit.com/websocket/v1'
 const INITIAL_HISTORY_POINTS = 40
-const HOST_PASSWORD = process.env.HOST_PASSWORD?.trim() || '123456'
 const DEFAULT_ROOM_CODE = 'RALLY'
 const DEFAULT_HOST_NAME = 'Rally Host'
 const DEFAULT_LEVERAGE = 5
@@ -158,8 +157,7 @@ async function startRuntime() {
 }
 
 function registerSocket(socket: Socket) {
-  socket.on('host:create', async (payload: { hostName?: unknown; settings?: Partial<PartySettings>; password?: unknown } = {}, ack?: (result: Ack) => void) => {
-    if (!hasHostPassword(payload.password)) return fail(socket, ack, '호스트 비밀번호가 맞지 않아요.')
+  socket.on('host:create', async (payload: { hostName?: unknown; settings?: Partial<PartySettings> } = {}, ack?: (result: Ack) => void) => {
     const current = activeRoom()
     if (current) {
       const session: Session = {
@@ -192,8 +190,7 @@ function registerSocket(socket: Socket) {
     }
   })
 
-  socket.on('host:resume', (payload: { roomCode?: unknown; userId?: unknown; password?: unknown }, ack?: (result: Ack) => void) => {
-    if (!hasHostPassword(payload?.password)) return fail(socket, ack, '호스트 비밀번호가 맞지 않아요.')
+  socket.on('host:resume', (payload: { roomCode?: unknown; userId?: unknown }, ack?: (result: Ack) => void) => {
     const room = rooms.get(String(payload?.roomCode ?? '').trim().toUpperCase())
     if (!room || room.hostId !== String(payload?.userId ?? '')) return fail(socket, ack, '복구할 호스트 세션을 찾지 못했어요.')
 
@@ -210,8 +207,6 @@ function registerSocket(socket: Socket) {
 
   socket.on('host:join-active', (payloadOrAck?: unknown, possibleAck?: (result: Ack) => void) => {
     const ack = callbackFrom(payloadOrAck, possibleAck)
-    const payload = payloadOrAck && typeof payloadOrAck === 'object' ? payloadOrAck as { password?: unknown } : undefined
-    if (!hasHostPassword(payload?.password)) return fail(socket, ack, '호스트 비밀번호가 맞지 않아요.')
     const room = activeRoom()
     if (!room) return fail(socket, ack, '연결할 Rally 파티가 아직 없어요.')
 
@@ -232,9 +227,6 @@ function registerSocket(socket: Socket) {
 
     const possibleHostSession = payload as JoinPayload & Partial<Session>
     if (possibleHostSession.isHost && room.hostId === possibleHostSession.userId) {
-      if (!hasHostPassword((possibleHostSession as Partial<Session> & { password?: unknown }).password)) {
-        return fail(socket, ack, '호스트 비밀번호가 맞지 않아요.')
-      }
       const session: Session = {
         roomCode: room.state.roomCode,
         userId: room.hostId,
@@ -984,8 +976,4 @@ function pick<T>(items: readonly T[]): T {
 
 function callbackFrom(value: unknown, fallback?: (result: Ack) => void) {
   return typeof value === 'function' ? value as (result: Ack) => void : fallback
-}
-
-function hasHostPassword(value: unknown) {
-  return typeof value === 'string' && value === HOST_PASSWORD
 }
