@@ -29,6 +29,9 @@ const ROUND_CHECK_INTERVAL_MS = 1_000
 const MAX_PRICE_HISTORY = 72
 const RALLY_DURATION_MS = 8_000
 const UPBIT_TICKER_ENDPOINT = 'https://api.upbit.com/v1/ticker'
+const UPBIT_MINUTE_CANDLES_ENDPOINT = 'https://api.upbit.com/v1/candles/minutes/1'
+const INITIAL_HISTORY_POINTS = 40
+const HOST_PASSWORD = process.env.HOST_PASSWORD?.trim() || '123456'
 
 const MARKET_POOL = [
   { symbol: 'KRW-BTC', name: '비트코인', fallbackPrice: 156_200_000 },
@@ -130,7 +133,8 @@ httpServer.listen(PORT, '0.0.0.0', () => {
 })
 
 function registerSocket(socket: Socket) {
-  socket.on('host:create', (payload: { hostName?: unknown; settings?: Partial<PartySettings> } = {}, ack?: (result: Ack) => void) => {
+  socket.on('host:create', (payload: { hostName?: unknown; settings?: Partial<PartySettings>; password?: unknown } = {}, ack?: (result: Ack) => void) => {
+    if (!hasHostPassword(payload.password)) return fail(socket, ack, '호스트 비밀번호가 맞지 않아요.')
     if (activeRoom()) return fail(socket, ack, '이미 진행 중인 Rally 파티가 있어요. 손님으로 참여해 주세요.')
     const hostName = cleanName(payload.hostName, '오늘의 호스트')
     const room = createRoom(hostName, payload.settings)
@@ -146,7 +150,8 @@ function registerSocket(socket: Socket) {
     ack?.({ ok: true, state: room.state, session })
   })
 
-  socket.on('host:resume', (payload: { roomCode?: unknown; userId?: unknown }, ack?: (result: Ack) => void) => {
+  socket.on('host:resume', (payload: { roomCode?: unknown; userId?: unknown; password?: unknown }, ack?: (result: Ack) => void) => {
+    if (!hasHostPassword(payload?.password)) return fail(socket, ack, '호스트 비밀번호가 맞지 않아요.')
     const room = rooms.get(String(payload?.roomCode ?? '').trim().toUpperCase())
     if (!room || room.hostId !== String(payload?.userId ?? '')) return fail(socket, ack, '복구할 호스트 세션을 찾지 못했어요.')
 
@@ -163,6 +168,8 @@ function registerSocket(socket: Socket) {
 
   socket.on('host:join-active', (payloadOrAck?: unknown, possibleAck?: (result: Ack) => void) => {
     const ack = callbackFrom(payloadOrAck, possibleAck)
+    const payload = payloadOrAck && typeof payloadOrAck === 'object' ? payloadOrAck as { password?: unknown } : undefined
+    if (!hasHostPassword(payload?.password)) return fail(socket, ack, '호스트 비밀번호가 맞지 않아요.')
     const room = activeRoom()
     if (!room) return fail(socket, ack, '연결할 Rally 파티가 아직 없어요.')
 
@@ -183,6 +190,9 @@ function registerSocket(socket: Socket) {
 
     const possibleHostSession = payload as JoinPayload & Partial<Session>
     if (possibleHostSession.isHost && room.hostId === possibleHostSession.userId) {
+      if (!hasHostPassword((possibleHostSession as Partial<Session> & { password?: unknown }).password)) {
+        return fail(socket, ack, '호스트 비밀번호가 맞지 않아요.')
+      }
       const session: Session = {
         roomCode: room.state.roomCode,
         userId: room.hostId,
@@ -413,6 +423,7 @@ function createRoom(hostName: string, requestedSettings?: Partial<PartySettings>
   }
   rooms.set(roomCode, room)
   activeRoomCode = roomCode
+  void hydrateMarketHistory(room, market.symbol)
   void refreshMarket(room)
   return room
 }
@@ -551,6 +562,7 @@ function chooseNextMarket(room: Room) {
   const candidates = MARKET_POOL.filter((market) => market.symbol !== previousSymbol)
   const selected = candidates[randomInt(candidates.length)]
   room.state.market = fallbackMarket(selected.symbol, selected.name, selected.fallbackPrice)
+  void hydrateMarketHistory(room, selected.symbol)
 }
 
 async function pollMarkets() {
@@ -572,6 +584,37 @@ async function refreshMarket(room: Room) {
   } catch {
     const next = fallbackTick(market.price)
     applyPrice(room, next, 'fallback')
+  }
+}
+
+async function hydrateMarketHistory(room: Room, marketSymbol: string) {
+  try {
+    const response = await fetch(
+      `${UPBIT_MINUTE_CANDLES_ENDPOINT}?market=${encodeURIComponent(marketSymbol)}&count=${INITIAL_HISTORY_POINTS}`,
+      { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(3_000) },
+    )
+    if (!response.ok) throw new Error('upbit candle response unavailable')
+    const payload = (await response.json()) as Array<{ trade_price?: unknown }>
+    const closes = payload
+      .map((candle) => roundPrice(Number(candle.trade_price)))
+      .filter((price) => Number.isFinite(price) && price > 0)
+      .reverse()
+      .slice(-INITIAL_HISTORY_POINTS)
+    if (closes.length < 8 || room.state.market.symbol !== marketSymbol) return
+
+    const market = room.state.market
+    const priorClose = closes.at(-2) ?? closes[0]
+    if (market.source !== 'upbit') {
+      market.previousPrice = priorClose
+      market.price = closes.at(-1) ?? market.price
+      market.changeRate = priorClose ? ((market.price - priorClose) / priorClose) * 100 : 0
+      market.source = 'upbit'
+    }
+    market.history = [...closes.slice(-(INITIAL_HISTORY_POINTS - 1)), market.price].slice(-INITIAL_HISTORY_POINTS)
+    refreshPnls(room)
+    broadcast(room)
+  } catch {
+    // The existing fallback history and ticker simulation keep the party moving.
   }
 }
 
@@ -655,7 +698,21 @@ function fail(socket: Socket, ack: ((result: Ack) => void) | undefined, message:
 
 function fallbackMarket(symbol: string, name: string, fallbackPrice: number): Market {
   const initial = roundPrice(fallbackPrice)
-  return { symbol, name, price: initial, previousPrice: initial, changeRate: 0, history: Array.from({ length: 28 }, () => initial), source: 'fallback' }
+  const history = fallbackHistory(initial)
+  return { symbol, name, price: initial, previousPrice: history.at(-2) ?? initial, changeRate: 0, history, source: 'fallback' }
+}
+
+function fallbackHistory(initialPrice: number) {
+  let current = initialPrice * (1 + (Math.random() - 0.5) * 0.035)
+  const history: number[] = []
+  for (let index = 0; index < INITIAL_HISTORY_POINTS; index += 1) {
+    const pullToInitial = (initialPrice - current) * 0.09
+    const movement = current * ((Math.random() - 0.5) * 0.0035)
+    current = Math.max(0.00001, current + pullToInitial + movement)
+    history.push(roundPrice(current))
+  }
+  history[history.length - 1] = initialPrice
+  return history
 }
 
 function fallbackTick(currentPrice: number) {
@@ -731,4 +788,8 @@ function pick<T>(items: readonly T[]): T {
 
 function callbackFrom(value: unknown, fallback?: (result: Ack) => void) {
   return typeof value === 'function' ? value as (result: Ack) => void : fallback
+}
+
+function hasHostPassword(value: unknown) {
+  return typeof value === 'string' && value === HOST_PASSWORD
 }

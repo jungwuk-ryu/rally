@@ -6,9 +6,9 @@ Socket.IO는 현재 페이지와 같은 origin에서 연결한다. 모든 상태
 
 | Client event | Payload | 결과 |
 | --- | --- | --- |
-| `host:create` | `{ hostName, settings? }` | 활성 파티가 없을 때만 방을 만들고 callback으로 `{ ok, state, session }` 반환 |
-| `host:resume` | `{ roomCode, userId }` | 호스트 화면 새로고침 뒤, 이전 callback `session`으로 복구 |
-| `host:join-active` | 없음 | 현재 활성 파티에 호스트 미러 화면으로 연결. 같은 상태와 설정 제어 권한을 받음 |
+| `host:create` | `{ hostName, settings?, password }` | 비밀번호를 확인한 뒤, 활성 파티가 없을 때만 방을 만들고 callback으로 `{ ok, state, session }` 반환 |
+| `host:resume` | `{ roomCode, userId, password }` | 비밀번호를 확인한 뒤 호스트 화면 새로고침 세션 복구 |
+| `host:join-active` | `{ password }` | 비밀번호를 확인한 뒤 현재 활성 파티에 호스트 미러 화면으로 연결. 같은 상태와 설정 제어 권한을 받음 |
 | `party:join` | `{ roomCode, phone, nickname }` | 전화번호가 같은 손님이면 기존 크레딧과 포지션을 복구 |
 | `party:join-default` | `{ phone, nickname }` | 현재 열려 있는 단일 파티에 방 코드 없이 입장 |
 | `party:resume` | `{ roomCode, phone }` | 화면 새로고침 뒤 기존 손님 세션 복구 |
@@ -39,7 +39,7 @@ Socket.IO는 현재 페이지와 같은 origin에서 연결한다. 모든 상태
 | `host:event-reward` | `{ eventId, userId }` | 선택 손님에게 한 번만 미션 보상 지급 |
 | `host:order-served` | `{ orderId }` | 주문 서빙 완료 처리 |
 
-호스트 이벤트는 방을 만든 socket 세션 또는 `host:join-active`로 연결한 호스트 미러 세션만 실행할 수 있다.
+호스트 비밀번호의 기본값은 `123456`이며 서버 환경변수 `HOST_PASSWORD`로 바꿀 수 있다. 호스트 이벤트는 방을 만든 socket 세션 또는 `host:join-active`로 연결한 호스트 미러 세션만 실행할 수 있다.
 
 ## Server event
 
@@ -49,7 +49,7 @@ Socket.IO는 현재 페이지와 같은 origin에서 연결한다. 모든 상태
 | `party:notice` | `PartyNotice` | 해당 손님에게만 보내는 선물·정산·서빙 팝업. 전역 공지는 `party:state.notice`에도 포함 |
 | `party:error` | `string` | 액션 실패 문구 |
 
-`PartyState.market.source`가 `upbit`면 업비트 ticker를 받고 있는 상태다. 연결 실패 시 `fallback`으로 자연스러운 데모 가격을 계속 보낸다. `PartyState.rallyActiveUntil`이 현재 시각보다 미래면 Rally Moment 연출을 보여준다.
+새 파티와 새 종목은 업비트 공개 1분 캔들의 최근 약 40개 종가를 `PartyState.market.history`에 먼저 채운다. 이후 3초 ticker 가격을 계속 덧붙인다. 캔들 또는 ticker 호출이 실패하면 자연스러운 fallback 이력과 가격 흐름으로 계속 진행한다. `PartyState.market.source`가 `upbit`면 업비트 공개 데이터를 받고 있는 상태다. `PartyState.rallyActiveUntil`이 현재 시각보다 미래면 Rally Moment 연출을 보여준다.
 
 `PartySettings.autoRoundEnabled`의 기본값은 `false`다. 켜면 기본 600초를 기준으로 포지션을 정산하고 직전 종목을 제외한 다음 종목으로 자동 전환한다. 꺼진 상태에서는 호스트의 `host:round-next`만 라운드를 넘긴다.
 
