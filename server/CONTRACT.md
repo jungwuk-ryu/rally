@@ -49,7 +49,7 @@ Socket.IO는 현재 페이지와 같은 origin에서 연결한다. 모든 상태
 | `party:notice` | `PartyNotice` | 해당 손님에게만 보내는 선물·정산·서빙 팝업. 전역 공지는 `party:state.notice`에도 포함 |
 | `party:error` | `string` | 액션 실패 문구 |
 
-새 파티와 새 종목은 업비트 공개 1분 캔들의 최근 약 40개 종가를 `PartyState.market.history`에 먼저 채운다. 이후 3초 ticker 가격을 계속 덧붙인다. 캔들 또는 ticker 호출이 실패하면 자연스러운 fallback 이력과 가격 흐름으로 계속 진행한다. `PartyState.market.source`가 `upbit`면 업비트 공개 데이터를 받고 있는 상태다. `PartyState.rallyActiveUntil`이 현재 시각보다 미래면 Rally Moment 연출을 보여준다.
+새 파티와 새 종목은 업비트 공개 1분 캔들의 최근 약 40개 종가를 `PartyState.market.history`에 먼저 채운다. 이후 3초 ticker 가격을 계속 덧붙인다. ticker가 잠시 실패하면 마지막 실제 가격과 이력을 그대로 유지한다. 아직 공개 데이터를 받지 못한 상태는 평평한 DEMO 이력을 유지한다. `PartyState.market.source`가 `upbit`면 업비트 공개 데이터를 받고 있는 상태이며, `fallback`이면 UI는 `DEMO`로 표시한다. `PartyState.rallyActiveUntil`이 현재 시각보다 미래면 Rally Moment 연출을 보여준다.
 
 `PartySettings.autoRoundEnabled`의 기본값은 `false`다. 켜면 기본 600초를 기준으로 포지션을 정산하고 직전 종목을 제외한 다음 종목으로 자동 전환한다. 꺼진 상태에서는 호스트의 `host:round-next`만 라운드를 넘긴다.
 

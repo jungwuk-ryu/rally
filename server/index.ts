@@ -109,28 +109,30 @@ const io = new Server(httpServer, {
   transports: ['websocket', 'polling'],
 })
 
-io.on('connection', (socket) => registerSocket(socket))
+if (process.env.RALLY_TEST_MODE !== '1') {
+  io.on('connection', (socket) => registerSocket(socket))
 
-setInterval(() => {
-  for (const room of rooms.values()) {
-    const now = Date.now()
-    if (room.state.rallyActiveUntil && room.state.rallyActiveUntil <= now) {
-      room.state.rallyActiveUntil = undefined
-      broadcast(room)
+  setInterval(() => {
+    for (const room of rooms.values()) {
+      const now = Date.now()
+      if (room.state.rallyActiveUntil && room.state.rallyActiveUntil <= now) {
+        room.state.rallyActiveUntil = undefined
+        broadcast(room)
+      }
+      if (room.state.settings.autoRoundEnabled && now - room.state.roundStartedAt >= room.state.settings.roundSeconds * 1_000) {
+        finishRound(room, false)
+      }
     }
-    if (room.state.settings.autoRoundEnabled && now - room.state.roundStartedAt >= room.state.settings.roundSeconds * 1_000) {
-      finishRound(room, false)
-    }
-  }
-}, ROUND_CHECK_INTERVAL_MS).unref()
+  }, ROUND_CHECK_INTERVAL_MS).unref()
 
-setInterval(() => {
-  void pollMarkets()
-}, PRICE_POLL_INTERVAL_MS).unref()
+  setInterval(() => {
+    void pollMarkets()
+  }, PRICE_POLL_INTERVAL_MS).unref()
 
-httpServer.listen(PORT, '0.0.0.0', () => {
-  console.info(`[rally] server listening on ${PORT}`)
-})
+  httpServer.listen(PORT, '0.0.0.0', () => {
+    console.info(`[rally] server listening on ${PORT}`)
+  })
+}
 
 function registerSocket(socket: Socket) {
   socket.on('host:create', (payload: { hostName?: unknown; settings?: Partial<PartySettings>; password?: unknown } = {}, ack?: (result: Ack) => void) => {
@@ -571,8 +573,17 @@ async function pollMarkets() {
 
 async function refreshMarket(room: Room) {
   const market = room.state.market
+  const updated = await pollMarketPrice(market)
+  if (!updated) return
+  refreshPnls(room)
+
+  if (Math.abs(market.changeRate) >= 0.45) announceMc(room, 'priceMove')
+  broadcast(room)
+}
+
+export async function pollMarketPrice(market: Market, request: typeof fetch = fetch) {
   try {
-    const response = await fetch(`${UPBIT_TICKER_ENDPOINT}?markets=${encodeURIComponent(market.symbol)}`, {
+    const response = await request(`${UPBIT_TICKER_ENDPOINT}?markets=${encodeURIComponent(market.symbol)}`, {
       headers: { Accept: 'application/json' },
       signal: AbortSignal.timeout(2_400),
     })
@@ -580,10 +591,10 @@ async function refreshMarket(room: Room) {
     const payload = (await response.json()) as Array<{ trade_price?: unknown }>
     const price = Number(payload[0]?.trade_price)
     if (!Number.isFinite(price) || price <= 0) throw new Error('upbit ticker malformed')
-    applyPrice(room, price, 'upbit')
+    applyMarketPrice(market, price, 'upbit')
+    return true
   } catch {
-    const next = fallbackTick(market.price)
-    applyPrice(room, next, 'fallback')
+    return false
   }
 }
 
@@ -614,12 +625,11 @@ async function hydrateMarketHistory(room: Room, marketSymbol: string) {
     refreshPnls(room)
     broadcast(room)
   } catch {
-    // The existing fallback history and ticker simulation keep the party moving.
+    // Keep the stable DEMO market untouched until public data becomes available.
   }
 }
 
-function applyPrice(room: Room, incomingPrice: number, source: Market['source']) {
-  const market = room.state.market
+function applyMarketPrice(market: Market, incomingPrice: number, source: Market['source']) {
   const price = roundPrice(incomingPrice)
   const previousPrice = market.price
   market.previousPrice = previousPrice
@@ -627,10 +637,6 @@ function applyPrice(room: Room, incomingPrice: number, source: Market['source'])
   market.changeRate = previousPrice ? ((price - previousPrice) / previousPrice) * 100 : 0
   market.source = source
   market.history = [...market.history, price].slice(-MAX_PRICE_HISTORY)
-  refreshPnls(room)
-
-  if (Math.abs(market.changeRate) >= 0.45) announceMc(room, 'priceMove')
-  broadcast(room)
 }
 
 function refreshPnls(room: Room) {
@@ -698,26 +704,15 @@ function fail(socket: Socket, ack: ((result: Ack) => void) | undefined, message:
 
 function fallbackMarket(symbol: string, name: string, fallbackPrice: number): Market {
   const initial = roundPrice(fallbackPrice)
-  const history = fallbackHistory(initial)
-  return { symbol, name, price: initial, previousPrice: history.at(-2) ?? initial, changeRate: 0, history, source: 'fallback' }
-}
-
-function fallbackHistory(initialPrice: number) {
-  let current = initialPrice * (1 + (Math.random() - 0.5) * 0.035)
-  const history: number[] = []
-  for (let index = 0; index < INITIAL_HISTORY_POINTS; index += 1) {
-    const pullToInitial = (initialPrice - current) * 0.09
-    const movement = current * ((Math.random() - 0.5) * 0.0035)
-    current = Math.max(0.00001, current + pullToInitial + movement)
-    history.push(roundPrice(current))
+  return {
+    symbol,
+    name,
+    price: initial,
+    previousPrice: initial,
+    changeRate: 0,
+    history: Array.from({ length: INITIAL_HISTORY_POINTS }, () => initial),
+    source: 'fallback',
   }
-  history[history.length - 1] = initialPrice
-  return history
-}
-
-function fallbackTick(currentPrice: number) {
-  const variance = (Math.random() - 0.5) * 0.0048
-  return currentPrice * (1 + variance)
 }
 
 function mergeSettings(current: PartySettings, patch?: Partial<PartySettings>): PartySettings {
